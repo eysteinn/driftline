@@ -15,7 +15,6 @@ A production-ready microservices architecture with:
 - Data service (Go)
 - Results processor (Python)
 - Infrastructure components (PostgreSQL, Redis, MinIO)
-- Monitoring stack (Prometheus + Grafana)
 
 ### ✅ Frontend Application
 
@@ -173,24 +172,6 @@ A production-ready microservices architecture with:
 
 **Status**: ✅ Complete configurations
 
-### ✅ Monitoring Setup
-
-**Location**: `/monitoring`
-
-**Components**:
-- Prometheus configuration
-- Grafana dashboard provisioning
-- Metrics collection from all services
-
-**Metrics Configured**:
-- API server metrics
-- Data service metrics
-- Worker metrics
-- Database metrics
-- Storage metrics
-
-**Status**: ✅ Base monitoring stack ready
-
 ### ✅ Documentation
 
 **Files Created**:
@@ -255,7 +236,6 @@ make setup          # Initial setup
 1. **Frontend** - React structure ready for components
 2. **API Server** - Gin framework ready for endpoints
 3. **Workers** - Python structure ready for OpenDrift
-4. **Monitoring** - Prometheus/Grafana ready to collect metrics
 
 ## Next Steps for Development
 
@@ -335,8 +315,6 @@ make dev
 - Frontend: http://localhost:3000
 - API: http://localhost:8000
 - MinIO: http://localhost:9001
-- Grafana: http://localhost:3001
-- Prometheus: http://localhost:9090
 
 ## Key Features of This Implementation
 
@@ -378,8 +356,6 @@ Every component follows the specifications from:
 
 ### 📊 Observable
 
-- Prometheus metrics
-- Grafana dashboards
 - Structured logging
 - Health checks
 

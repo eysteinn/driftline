@@ -20,7 +20,6 @@ The platform is built with a modern microservices architecture:
 - **Data Service**: Go for managing environmental forcing data
 - **Results Processor**: Python for generating derived products and reports
 - **Infrastructure**: Docker + Docker Compose, PostgreSQL, Redis, MinIO
-- **Monitoring**: Prometheus + Grafana
 
 ## 📋 Prerequisites
 
@@ -58,8 +57,6 @@ This will start all services:
 - **Frontend**: http://localhost:3000
 - **API Server**: http://localhost:8000
 - **MinIO Console**: http://localhost:9001 (admin/minioadmin)
-- **Grafana**: http://localhost:3001 (admin/admin)
-- **Prometheus**: http://localhost:9090
 
 ### 4. Initialize the Database
 
@@ -117,10 +114,6 @@ driftline/
 ├── nginx/                   # Nginx configurations
 │   ├── nginx.dev.conf
 │   └── nginx.prod.conf
-├── monitoring/              # Monitoring configuration
-│   ├── prometheus.yml
-│   └── grafana/
-│       └── dashboards/
 ├── docker-compose.dev.yml   # Development environment
 ├── docker-compose.prod.yml  # Production environment
 ├── .env.example            # Environment variables template
@@ -212,22 +205,6 @@ Database schema is managed via SQL scripts in `sql/init/`. For schema changes:
 
 1. Add new migration scripts with sequential numbering
 2. Restart the database service to apply changes
-
-## 📊 Monitoring
-
-Access monitoring dashboards:
-
-- **Prometheus**: http://localhost:9090
-- **Grafana**: http://localhost:3001 (default: admin/admin)
-
-Available metrics:
-
-- API request rates and latencies
-- Mission creation and completion rates
-- Job queue depth
-- Worker utilization
-- Database performance
-- Storage usage
 
 ## 🔒 Security
 

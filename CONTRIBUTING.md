@@ -70,8 +70,7 @@ driftline/
 │   ├── data-service/     # Go data service
 │   └── results-processor/ # Python results processor
 ├── sql/                  # Database schemas
-├── nginx/                # Nginx configurations
-└── monitoring/           # Prometheus & Grafana configs
+└── nginx/                # Nginx configurations
 ```
 
 ## 📝 Pull Request Process
