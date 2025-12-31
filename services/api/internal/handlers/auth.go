@@ -36,6 +36,8 @@ func Register(c *gin.Context) {
 	).Scan(&userID)
 
 	if err != nil {
+		// TODO: Use proper error type checking with pq package
+		// This is a temporary solution checking error message string
 		if err.Error() == "pq: duplicate key value violates unique constraint \"users_email_key\"" {
 			c.JSON(http.StatusConflict, gin.H{"error": "Email already registered"})
 			return
@@ -87,8 +89,9 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// TODO: Generate JWT token
-	// For now, return a placeholder
+	// TODO: Generate JWT token with proper signing and expiration
+	// This is a placeholder for initial testing - MUST be replaced with real JWT implementation
+	// For production: use github.com/golang-jwt/jwt or similar library
 	token := "placeholder-jwt-token"
 
 	c.JSON(http.StatusOK, models.LoginResponse{

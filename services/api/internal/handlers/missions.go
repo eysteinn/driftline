@@ -18,7 +18,9 @@ func CreateMission(c *gin.Context) {
 	}
 
 	// TODO: Get user ID from JWT token in authorization header
-	// For now, using the first user from the database as a workaround
+	// SECURITY WARNING: This is a temporary workaround for testing only!
+	// In production, this MUST extract user ID from a validated JWT token
+	// Using the first user from the database is NOT secure and allows unauthorized access
 	var userID string
 	err := database.DB.QueryRow("SELECT id FROM users LIMIT 1").Scan(&userID)
 	if err != nil {
@@ -63,6 +65,8 @@ func CreateMission(c *gin.Context) {
 // ListMissions handles listing missions for the current user
 func ListMissions(c *gin.Context) {
 	// TODO: Get user ID from JWT token
+	// SECURITY WARNING: This is a temporary workaround for testing only!
+	// In production, this MUST extract user ID from a validated JWT token
 	var userID string
 	err := database.DB.QueryRow("SELECT id FROM users LIMIT 1").Scan(&userID)
 	if err != nil {
@@ -115,6 +119,8 @@ func ListMissions(c *gin.Context) {
 func GetMission(c *gin.Context) {
 	missionID := c.Param("id")
 	// TODO: Get user ID from JWT and verify ownership
+	// SECURITY WARNING: Currently allows access to any mission without authorization
+	// In production, must verify the mission belongs to the authenticated user
 
 	var m models.Mission
 	err := database.DB.QueryRow(
