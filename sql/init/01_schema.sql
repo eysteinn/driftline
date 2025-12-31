@@ -2,7 +2,7 @@
 -- PostgreSQL 16+
 
 -- Enable required extensions
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Note: gen_random_uuid() is built-in to PostgreSQL 13+ and doesn't require an extension
 CREATE EXTENSION IF NOT EXISTS "postgis";
 
 -- Users and Authentication Tables
