@@ -18,8 +18,13 @@ func CreateMission(c *gin.Context) {
 	}
 
 	// TODO: Get user ID from JWT token in authorization header
-	// For now, using a placeholder
-	userID := "00000000-0000-0000-0000-000000000000"
+	// For now, using the first user from the database as a workaround
+	var userID string
+	err := database.DB.QueryRow("SELECT id FROM users LIMIT 1").Scan(&userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No user found"})
+		return
+	}
 
 	// Set defaults
 	if req.EnsembleSize == 0 {
@@ -28,7 +33,7 @@ func CreateMission(c *gin.Context) {
 
 	// Insert mission into database
 	var missionID string
-	err := database.DB.QueryRow(
+	err = database.DB.QueryRow(
 		`INSERT INTO missions (
 			user_id, name, description, last_known_lat, last_known_lon, 
 			last_known_time, object_type, uncertainty_radius_m, 
@@ -58,7 +63,12 @@ func CreateMission(c *gin.Context) {
 // ListMissions handles listing missions for the current user
 func ListMissions(c *gin.Context) {
 	// TODO: Get user ID from JWT token
-	userID := "00000000-0000-0000-0000-000000000000"
+	var userID string
+	err := database.DB.QueryRow("SELECT id FROM users LIMIT 1").Scan(&userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No user found"})
+		return
+	}
 
 	rows, err := database.DB.Query(
 		`SELECT id, user_id, name, description, last_known_lat, last_known_lon,

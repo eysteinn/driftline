@@ -3,7 +3,8 @@
 
 -- Enable required extensions
 -- Note: gen_random_uuid() is built-in to PostgreSQL 13+ and doesn't require an extension
-CREATE EXTENSION IF NOT EXISTS "postgis";
+-- PostGIS extension commented out for now - will be needed for spatial queries later
+-- CREATE EXTENSION IF NOT EXISTS "postgis";
 
 -- Users and Authentication Tables
 CREATE TABLE users (
