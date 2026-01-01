@@ -13,7 +13,6 @@ import (
 var (
 	// RedisClient is the global Redis client
 	RedisClient *redis.Client
-	ctx         = context.Background()
 )
 
 // Connect initializes the Redis client

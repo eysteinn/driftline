@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -81,8 +82,8 @@ func CreateMission(c *gin.Context) {
 	}
 
 	if err := queue.EnqueueDriftJob(mission.ID, jobParams); err != nil {
-		// Log the error but don't fail the mission creation
-		// The mission is already in the database with status "created"
+		// Failed to enqueue the job - return error response
+		log.Printf("Failed to enqueue drift job for mission %s: %v", mission.ID, err)
 		utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to enqueue job for processing")
 		return
 	}
@@ -93,8 +94,8 @@ func CreateMission(c *gin.Context) {
 		"queued", time.Now(), mission.ID,
 	)
 	if err != nil {
-		// Log the error but don't fail - the job is already queued
-		// The worker will update the status when it picks up the job
+		// Log the error but don't fail - the job is already queued and worker will update status
+		log.Printf("Failed to update mission %s status to queued: %v", mission.ID, err)
 	} else {
 		mission.Status = "queued"
 		mission.UpdatedAt = time.Now()
