@@ -10,6 +10,7 @@ import time
 import logging
 import json
 import tempfile
+import shutil
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from pathlib import Path
@@ -19,6 +20,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import boto3
 from botocore.client import Config
+from botocore.exceptions import ClientError
 from opendrift.readers import reader_netCDF_CF_generic
 from opendrift.models.leeway import Leeway
 import numpy as np
@@ -47,7 +49,11 @@ except ImportError:
     STATUS_FAILED = "failed"
 
 # Configure logging
-log_level = os.getenv('LOG_LEVEL', 'INFO')
+log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
+# Validate log level
+if log_level not in ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'):
+    log_level = 'INFO'
+
 logging.basicConfig(
     level=getattr(logging, log_level),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -144,8 +150,8 @@ class DriftWorker:
                     cur.execute(
                         """
                         INSERT INTO mission_results 
-                        (id, mission_id, result_type, file_path, created_at)
-                        VALUES (gen_random_uuid(), %s, 'netcdf', %s, CURRENT_TIMESTAMP)
+                        (id, mission_id, netcdf_path, created_at)
+                        VALUES (gen_random_uuid(), %s, %s, CURRENT_TIMESTAMP)
                         """,
                         (mission_id, result_location)
                     )
@@ -205,9 +211,13 @@ class DriftWorker:
             # Ensure bucket exists
             try:
                 self.s3_client.head_bucket(Bucket=bucket)
-            except:
-                self.s3_client.create_bucket(Bucket=bucket)
-                logger.info(f"Created bucket: {bucket}")
+            except ClientError as e:
+                error_code = e.response.get('Error', {}).get('Code', '')
+                if error_code in ('404', 'NoSuchBucket'):
+                    self.s3_client.create_bucket(Bucket=bucket)
+                    logger.info(f"Created bucket: {bucket}")
+                else:
+                    raise
             
             # Upload file
             self.s3_client.upload_file(result_file, bucket, key)
@@ -357,7 +367,6 @@ class DriftWorker:
         finally:
             # Cleanup temporary directory
             if temp_dir and os.path.exists(temp_dir):
-                import shutil
                 shutil.rmtree(temp_dir, ignore_errors=True)
                 logger.debug(f"Cleaned up temporary directory: {temp_dir}")
     
