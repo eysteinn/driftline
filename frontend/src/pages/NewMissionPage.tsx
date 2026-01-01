@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Container,
@@ -13,20 +13,17 @@ import {
   CircularProgress,
 } from '@mui/material'
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
-import { LatLng } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import Layout from '../components/Layout'
 import { useMissionStore } from '../stores/missionStore'
 import { OBJECT_TYPES } from '../types'
 
-// Fix for default marker icon
+// Fix for default marker icon - use CDN instead of local imports
 import L from 'leaflet'
-import icon from 'leaflet/dist/images/marker-icon.png'
-import iconShadow from 'leaflet/dist/images/marker-shadow.png'
 
-let DefaultIcon = L.icon({
-  iconUrl: icon,
-  shadowUrl: iconShadow,
+const DefaultIcon = L.icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
   iconSize: [25, 41],
   iconAnchor: [12, 41]
 })
@@ -62,8 +59,8 @@ export default function NewMissionPage() {
     ensembleSize: 1000,
   })
 
-  const [markerPosition, setMarkerPosition] = useState<LatLng>(
-    new LatLng(formData.lastKnownLat, formData.lastKnownLon)
+  const [markerPosition, setMarkerPosition] = useState<L.LatLng>(
+    new L.LatLng(formData.lastKnownLat, formData.lastKnownLon)
   )
 
   const handleChange = (field: string, value: any) => {
@@ -74,7 +71,7 @@ export default function NewMissionPage() {
       const lat = field === 'lastKnownLat' ? value : formData.lastKnownLat
       const lon = field === 'lastKnownLon' ? value : formData.lastKnownLon
       if (!isNaN(lat) && !isNaN(lon)) {
-        setMarkerPosition(new LatLng(lat, lon))
+        setMarkerPosition(new L.LatLng(lat, lon))
       }
     }
   }
@@ -85,7 +82,7 @@ export default function NewMissionPage() {
       lastKnownLat: parseFloat(lat.toFixed(6)),
       lastKnownLon: parseFloat(lon.toFixed(6)),
     }))
-    setMarkerPosition(new LatLng(lat, lon))
+    setMarkerPosition(new L.LatLng(lat, lon))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

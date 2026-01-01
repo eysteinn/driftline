@@ -10,7 +10,9 @@ import DashboardPage from './pages/DashboardPage'
 import MissionsPage from './pages/MissionsPage'
 import NewMissionPage from './pages/NewMissionPage'
 import MissionDetailsPage from './pages/MissionDetailsPage'
+import ResultsPage from './pages/ResultsPage'
 import ProfilePage from './pages/ProfilePage'
+import ApiKeysPage from './pages/ApiKeysPage'
 
 // Components
 import PrivateRoute from './components/PrivateRoute'
@@ -74,10 +76,26 @@ function App() {
               }
             />
             <Route
+              path="/missions/:id/results"
+              element={
+                <PrivateRoute>
+                  <ResultsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="/profile"
               element={
                 <PrivateRoute>
                   <ProfilePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/api-keys"
+              element={
+                <PrivateRoute>
+                  <ApiKeysPage />
                 </PrivateRoute>
               }
             />

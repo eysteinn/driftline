@@ -18,7 +18,7 @@ interface MissionState {
   clearCurrentMission: () => void
 }
 
-export const useMissionStore = create<MissionState>((set, get) => ({
+export const useMissionStore = create<MissionState>((set) => ({
   missions: [],
   currentMission: null,
   currentResult: null,
