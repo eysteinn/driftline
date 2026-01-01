@@ -199,13 +199,13 @@ Supports:
 ## 12. Pricing Model (Summary)
 
 ### On-Demand
-- €199–€499 per mission
+- €X per mission
 
 ### Operational Subscription
-- €1,500–€3,000 / month
+- €X / month
 
 ### Enterprise
-- €5,000–€15,000 / month + SLA
+- €X / month + SLA
 
 Optional add-ons:
 - Fast-track priority runs
