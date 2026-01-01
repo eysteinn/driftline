@@ -2,6 +2,9 @@ FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
 
+# Install ca-certificates in builder stage
+RUN apk --no-cache add ca-certificates
+
 COPY go.mod go.sum* ./
 RUN go mod download
 
