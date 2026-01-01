@@ -238,7 +238,11 @@ class DriftWorker:
         # Extract mission parameters with defaults
         lat = mission_params['latitude']
         lon = mission_params['longitude']
-        start_time = datetime.fromisoformat(mission_params['start_time'].replace('Z', '+00:00'))
+        # Parse datetime and remove timezone info (OpenDrift expects naive datetimes)
+        start_time_str = mission_params['start_time'].replace('Z', '+00:00')
+        start_time = datetime.fromisoformat(start_time_str)
+        if start_time.tzinfo is not None:
+            start_time = start_time.replace(tzinfo=None)
         duration_hours = mission_params.get('duration_hours', DEFAULT_DURATION_HOURS)
         num_particles = mission_params.get('num_particles', DEFAULT_NUM_PARTICLES)
         object_type = mission_params.get('object_type', DEFAULT_OBJECT_TYPE)
@@ -246,16 +250,13 @@ class DriftWorker:
         # Initialize Leeway model
         o = Leeway(loglevel=logging.WARNING)
         
-        # Add readers for forcing data
-        # In production, use downloaded data from forcing_files
-        # For now, use default/global readers
-        try:
-            # Add a global ocean current reader (if available)
-            # o.add_readers_from_list(['https://...'])
-            # For demonstration, we'll proceed without readers (uses fallback)
-            logger.info("Using fallback readers (no external data sources configured)")
-        except Exception as e:
-            logger.warning(f"Could not add readers: {e}")
+        # Set constant environmental conditions (fallback mode for testing)
+        # In production, this would use downloaded forcing data from data-service
+        logger.info("Using constant environmental conditions (testing mode)")
+        o.set_config('environment:fallback:x_wind', 3.0)  # 3 m/s eastward wind
+        o.set_config('environment:fallback:y_wind', 2.0)  # 2 m/s northward wind
+        o.set_config('environment:fallback:x_sea_water_velocity', 0.2)  # 0.2 m/s eastward current
+        o.set_config('environment:fallback:y_sea_water_velocity', 0.1)  # 0.1 m/s northward current
         
         # Seed particles at last known position
         logger.info(f"Seeding {num_particles} particles at ({lat}, {lon})")
