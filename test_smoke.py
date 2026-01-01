@@ -6,13 +6,19 @@ Tests individual components without requiring full Docker setup
 
 import sys
 import json
+import os
 from datetime import datetime
+from pathlib import Path
+
+# Get repository root directory
+REPO_ROOT = Path(__file__).parent.absolute()
 
 def test_worker_imports():
     """Test that worker can be imported and has required components"""
     print("Testing drift worker imports...")
     try:
-        sys.path.insert(0, '/home/runner/work/driftline/driftline/services/drift-worker')
+        worker_path = REPO_ROOT / 'services' / 'drift-worker'
+        sys.path.insert(0, str(worker_path))
         
         # First check config which doesn't need external dependencies
         import config
@@ -26,7 +32,7 @@ def test_worker_imports():
         assert hasattr(config, 'STATUS_FAILED'), "Config missing STATUS_FAILED"
         
         # Check worker file exists and has expected structure
-        worker_file = '/home/runner/work/driftline/driftline/services/drift-worker/worker.py'
+        worker_file = worker_path / 'worker.py'
         with open(worker_file, 'r') as f:
             worker_content = f.read()
         
@@ -54,15 +60,13 @@ def test_queue_data_structure():
     """Test that job data structure is correct"""
     print("\nTesting job data structure...")
     try:
-        sys.path.insert(0, '/home/runner/work/driftline/driftline/services/api/internal/queue')
-        
         # Test job structure
         job = {
             "mission_id": "test-mission-123",
             "params": {
                 "latitude": 60.0,
                 "longitude": -3.0,
-                "start_time": datetime.utcnow().isoformat() + "Z",
+                "start_time": datetime.now().replace(tzinfo=None).isoformat() + "Z",
                 "duration_hours": 24,
                 "num_particles": 100,
                 "object_type": 1
@@ -97,7 +101,7 @@ def test_database_schema():
     """Test database schema matches expected structure"""
     print("\nTesting database schema...")
     try:
-        schema_file = '/home/runner/work/driftline/driftline/sql/init/01_schema.sql'
+        schema_file = REPO_ROOT / 'sql' / 'init' / '01_schema.sql'
         with open(schema_file, 'r') as f:
             schema = f.read()
         
@@ -155,7 +159,7 @@ def test_api_structure():
     print("\nTesting API structure...")
     try:
         # Check main.go exists and has expected routes
-        main_file = '/home/runner/work/driftline/driftline/services/api/cmd/api-gateway/main.go'
+        main_file = REPO_ROOT / 'services' / 'api' / 'cmd' / 'api-gateway' / 'main.go'
         with open(main_file, 'r') as f:
             main_content = f.read()
         
@@ -180,7 +184,7 @@ def test_api_structure():
             assert endpoint in main_content, f"Missing {endpoint} endpoint"
         
         # Check handlers exist
-        missions_handler = '/home/runner/work/driftline/driftline/services/api/internal/handlers/missions.go'
+        missions_handler = REPO_ROOT / 'services' / 'api' / 'internal' / 'handlers' / 'missions.go'
         with open(missions_handler, 'r') as f:
             handler_content = f.read()
         
@@ -202,7 +206,7 @@ def test_integration_points():
     print("\nTesting integration points...")
     try:
         # Check API uses correct queue name
-        queue_file = '/home/runner/work/driftline/driftline/services/api/internal/queue/redis.go'
+        queue_file = REPO_ROOT / 'services' / 'api' / 'internal' / 'queue' / 'redis.go'
         with open(queue_file, 'r') as f:
             queue_content = f.read()
         
@@ -211,7 +215,7 @@ def test_integration_points():
         assert 'DriftJobParams' in queue_content, "Missing DriftJobParams struct"
         
         # Check worker uses same queue name
-        worker_file = '/home/runner/work/driftline/driftline/services/drift-worker/worker.py'
+        worker_file = REPO_ROOT / 'services' / 'drift-worker' / 'worker.py'
         with open(worker_file, 'r') as f:
             worker_content = f.read()
         
@@ -237,7 +241,7 @@ def test_docker_compose():
     """Test Docker Compose configuration"""
     print("\nTesting Docker Compose configuration...")
     try:
-        compose_file = '/home/runner/work/driftline/driftline/docker-compose.dev.yml'
+        compose_file = REPO_ROOT / 'docker-compose.dev.yml'
         with open(compose_file, 'r') as f:
             compose_content = f.read()
         

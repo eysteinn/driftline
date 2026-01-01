@@ -10,14 +10,14 @@ import sys
 import os
 from datetime import datetime, timedelta
 
-# Test configuration
+# Test configuration from environment variables with sensible defaults for development
 TEST_CONFIG = {
-    'api_base_url': 'http://localhost:8000/api/v1',
-    'redis_url': 'redis://localhost:6379/0',
-    'database_url': 'postgresql://driftline_user:dev_password@localhost:5432/driftline',
-    's3_endpoint': 'http://localhost:9000',
-    's3_access_key': 'minioadmin',
-    's3_secret_key': 'minioadmin',
+    'api_base_url': os.getenv('API_BASE_URL', 'http://localhost:8000/api/v1'),
+    'redis_url': os.getenv('REDIS_URL', 'redis://localhost:6379/0'),
+    'database_url': os.getenv('DATABASE_URL', 'postgresql://driftline_user:dev_password@localhost:5432/driftline'),
+    's3_endpoint': os.getenv('S3_ENDPOINT', 'http://localhost:9000'),
+    's3_access_key': os.getenv('S3_ACCESS_KEY', 'minioadmin'),
+    's3_secret_key': os.getenv('S3_SECRET_KEY', 'minioadmin'),
 }
 
 class MissionFlowTest:
