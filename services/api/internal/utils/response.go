@@ -12,8 +12,7 @@ func SuccessResponse(c *gin.Context, statusCode int, data interface{}) {
 // ErrorResponse sends a standardized error response
 func ErrorResponse(c *gin.Context, statusCode int, message string) {
 	c.JSON(statusCode, gin.H{
-		"error":   message,
-		"message": message,
+		"error": message,
 	})
 }
 

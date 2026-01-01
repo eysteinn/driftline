@@ -14,6 +14,10 @@ var jwtSecret []byte
 func init() {
 	secret := os.Getenv("JWT_SECRET_KEY")
 	if secret == "" {
+		// Only use default in development
+		if os.Getenv("GIN_MODE") == "release" {
+			panic("JWT_SECRET_KEY must be set in production")
+		}
 		secret = "dev-secret-change-in-production"
 	}
 	jwtSecret = []byte(secret)
