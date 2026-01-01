@@ -9,19 +9,19 @@ type User struct {
 	ID             string    `json:"id" db:"id"`
 	Email          string    `json:"email" db:"email"`
 	HashedPassword string    `json:"-" db:"hashed_password"`
-	FullName       string    `json:"full_name" db:"full_name"`
-	IsActive       bool      `json:"is_active" db:"is_active"`
-	IsVerified     bool      `json:"is_verified" db:"is_verified"`
+	FullName       string    `json:"fullName" db:"full_name"`
+	IsActive       bool      `json:"isActive" db:"is_active"`
+	IsVerified     bool      `json:"isVerified" db:"is_verified"`
 	Role           string    `json:"role" db:"role"`
-	CreatedAt      time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
+	CreatedAt      time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt      time.Time `json:"updatedAt" db:"updated_at"`
 }
 
 // CreateUserRequest represents a user registration request
 type CreateUserRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required,min=8"`
-	FullName string `json:"full_name"`
+	FullName string `json:"fullName"`
 }
 
 // LoginRequest represents a login request
