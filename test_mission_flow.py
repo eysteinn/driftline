@@ -11,14 +11,20 @@ import os
 from datetime import datetime, timedelta
 
 # Test configuration from environment variables with sensible defaults for development
+# NOTE: For production, these MUST be set via environment variables without defaults
 TEST_CONFIG = {
     'api_base_url': os.getenv('API_BASE_URL', 'http://localhost:8000/api/v1'),
     'redis_url': os.getenv('REDIS_URL', 'redis://localhost:6379/0'),
     'database_url': os.getenv('DATABASE_URL', 'postgresql://driftline_user:dev_password@localhost:5432/driftline'),
     's3_endpoint': os.getenv('S3_ENDPOINT', 'http://localhost:9000'),
-    's3_access_key': os.getenv('S3_ACCESS_KEY', 'minioadmin'),
-    's3_secret_key': os.getenv('S3_SECRET_KEY', 'minioadmin'),
+    's3_access_key': os.getenv('S3_ACCESS_KEY', 'minioadmin'),  # WARNING: Development default only
+    's3_secret_key': os.getenv('S3_SECRET_KEY', 'minioadmin'),  # WARNING: Development default only
 }
+
+# Warn if using default credentials
+if TEST_CONFIG['s3_access_key'] == 'minioadmin' or TEST_CONFIG['s3_secret_key'] == 'minioadmin':
+    if os.getenv('ENVIRONMENT') == 'production':
+        raise ValueError("Production environment detected with default credentials! Set S3_ACCESS_KEY and S3_SECRET_KEY.")
 
 class MissionFlowTest:
     """Test the complete mission flow"""
@@ -156,7 +162,7 @@ class MissionFlowTest:
                 'description': 'Integration test mission',
                 'lastKnownLat': 60.0,
                 'lastKnownLon': -3.0,
-                'lastKnownTime': datetime.utcnow().isoformat() + 'Z',
+                'lastKnownTime': datetime.now().replace(tzinfo=None).isoformat() + 'Z',
                 'objectType': '1',
                 'forecastHours': 24,
                 'ensembleSize': 100

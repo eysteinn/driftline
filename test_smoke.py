@@ -18,6 +18,8 @@ def test_worker_imports():
     print("Testing drift worker imports...")
     try:
         worker_path = REPO_ROOT / 'services' / 'drift-worker'
+        # Note: sys.path modification is acceptable for test isolation
+        # This ensures we're testing the local code, not installed packages
         sys.path.insert(0, str(worker_path))
         
         # First check config which doesn't need external dependencies
