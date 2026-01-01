@@ -16,7 +16,7 @@ if ! command -v docker &> /dev/null; then
 fi
 
 # Check if Docker Compose is installed
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+if ! command -v docker compose &> /dev/null && ! docker compose version &> /dev/null; then
     echo "❌ Error: Docker Compose is not installed."
     echo "Please install Docker Compose from https://docs.docker.com/compose/install/"
     exit 1
@@ -49,7 +49,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "🚀 Starting Driftline services..."
     echo ""
     
-    docker-compose -f docker-compose.dev.yml up --build -d
+    docker compose -f docker-compose.dev.yml up --build -d
     
     echo ""
     echo "✅ Services are starting up!"
@@ -60,14 +60,14 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "   - MinIO Console:   http://localhost:9001 (minioadmin/minioadmin)"
     echo ""
     echo "📝 To view logs:"
-    echo "   docker-compose -f docker-compose.dev.yml logs -f"
+    echo "   docker compose -f docker-compose.dev.yml logs -f"
     echo ""
     echo "🛑 To stop services:"
-    echo "   docker-compose -f docker-compose.dev.yml down"
+    echo "   docker compose -f docker-compose.dev.yml down"
     echo ""
 else
     echo ""
     echo "👍 Setup complete! You can start the services later with:"
-    echo "   docker-compose -f docker-compose.dev.yml up --build"
+    echo "   docker compose -f docker-compose.dev.yml up --build"
     echo ""
 fi
