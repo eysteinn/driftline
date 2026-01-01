@@ -320,7 +320,12 @@ func DownloadMissionResults(c *gin.Context) {
 	format := c.Query("format")
 	
 	// Validate format parameter
-	if format != "netcdf" && format != "geojson" && format != "pdf" {
+	validFormats := map[string]bool{
+		"netcdf":  true,
+		"geojson": true,
+		"pdf":     true,
+	}
+	if !validFormats[format] {
 		utils.ErrorResponse(c, http.StatusBadRequest, "Invalid format. Must be one of: netcdf, geojson, pdf")
 		return
 	}

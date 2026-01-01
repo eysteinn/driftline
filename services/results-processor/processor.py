@@ -377,7 +377,7 @@ class ResultsProcessor:
                     (
                         contours['centroid_lat'],
                         contours['centroid_lon'],
-                        np.datetime64(final_time, 'ns').astype(datetime),
+                        final_time.astype('datetime64[us]').astype(object),
                         json.dumps(search_area_50) if search_area_50 else None,
                         json.dumps(search_area_90) if search_area_90 else None,
                         geojson_s3,
