@@ -2,12 +2,15 @@ package handlers
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/eysteinn/driftline/services/api/internal/database"
 	"github.com/eysteinn/driftline/services/api/internal/middleware"
 	"github.com/eysteinn/driftline/services/api/internal/models"
+	"github.com/eysteinn/driftline/services/api/internal/queue"
 	"github.com/eysteinn/driftline/services/api/internal/utils"
 	"github.com/gin-gonic/gin"
 )
@@ -60,7 +63,43 @@ func CreateMission(c *gin.Context) {
 		return
 	}
 
-	// TODO: Enqueue job to Redis for processing
+	// Enqueue job to Redis for processing
+	objectTypeInt := 1 // Default to Person-in-water
+	if req.ObjectType != "" {
+		// Try to parse as integer
+		if val, err := strconv.Atoi(req.ObjectType); err == nil {
+			objectTypeInt = val
+		}
+	}
+
+	jobParams := queue.DriftJobParams{
+		Latitude:      req.LastKnownLat,
+		Longitude:     req.LastKnownLon,
+		StartTime:     req.LastKnownTime.Format(time.RFC3339),
+		DurationHours: req.ForecastHours,
+		NumParticles:  req.EnsembleSize,
+		ObjectType:    objectTypeInt,
+	}
+
+	if err := queue.EnqueueDriftJob(mission.ID, jobParams); err != nil {
+		// Failed to enqueue the job - return error response
+		log.Printf("Failed to enqueue drift job for mission %s: %v", mission.ID, err)
+		utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to enqueue job for processing")
+		return
+	}
+
+	// Update mission status to "queued"
+	_, err = database.DB.Exec(
+		`UPDATE missions SET status = $1, updated_at = $2 WHERE id = $3`,
+		"queued", time.Now(), mission.ID,
+	)
+	if err != nil {
+		// Log the error but don't fail - the job is already queued and worker will update status
+		log.Printf("Failed to update mission %s status to queued: %v", mission.ID, err)
+	} else {
+		mission.Status = "queued"
+		mission.UpdatedAt = time.Now()
+	}
 
 	utils.SuccessResponse(c, http.StatusCreated, mission)
 }

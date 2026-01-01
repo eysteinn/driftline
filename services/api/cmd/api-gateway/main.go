@@ -7,6 +7,7 @@ import (
 	"github.com/eysteinn/driftline/services/api/internal/database"
 	"github.com/eysteinn/driftline/services/api/internal/handlers"
 	"github.com/eysteinn/driftline/services/api/internal/middleware"
+	"github.com/eysteinn/driftline/services/api/internal/queue"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
@@ -23,6 +24,12 @@ func main() {
 		log.Fatal("Failed to connect to database:", err)
 	}
 	defer database.Close()
+
+	// Connect to Redis
+	if err := queue.Connect(); err != nil {
+		log.Fatal("Failed to connect to Redis:", err)
+	}
+	defer queue.Close()
 
 	// Initialize Gin router
 	router := gin.Default()
