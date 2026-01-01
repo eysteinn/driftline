@@ -229,6 +229,22 @@ class DriftWorker:
             logger.error(f"Failed to upload results: {e}")
             raise
     
+    def _enqueue_results_processing(self, mission_id: str, netcdf_path: str):
+        """Enqueue a results processing job to Redis"""
+        results_queue = os.getenv('RESULTS_QUEUE', 'results_processing')
+        
+        job_data = {
+            'mission_id': mission_id,
+            'netcdf_path': netcdf_path
+        }
+        
+        try:
+            self.redis_client.rpush(results_queue, json.dumps(job_data))
+            logger.info(f"Enqueued results processing job for mission {mission_id}")
+        except Exception as e:
+            logger.error(f"Failed to enqueue results processing job: {e}")
+            # Don't fail the main job if we can't enqueue results processing
+    
     def _run_opendrift_simulation(self, mission_params: Dict[str, Any], 
                                   forcing_files: Dict[str, str],
                                   output_file: str):
@@ -339,6 +355,9 @@ class DriftWorker:
                 STATUS_COMPLETED,
                 result_location=result_location
             )
+            
+            # Enqueue results processing job
+            self._enqueue_results_processing(mission_id, result_location)
             
             logger.info(f"Mission {mission_id} completed successfully")
             

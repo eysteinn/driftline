@@ -2,11 +2,19 @@ package handlers
 
 import (
 	"database/sql"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/eysteinn/driftline/services/api/internal/database"
 	"github.com/eysteinn/driftline/services/api/internal/middleware"
 	"github.com/eysteinn/driftline/services/api/internal/models"
@@ -304,4 +312,154 @@ func GetMissionResults(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, result)
+}
+
+// DownloadMissionResults handles downloading mission result files
+func DownloadMissionResults(c *gin.Context) {
+	missionID := c.Param("id")
+	format := c.Query("format")
+	
+	// Validate format parameter
+	if format != "netcdf" && format != "geojson" && format != "pdf" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "Invalid format. Must be one of: netcdf, geojson, pdf")
+		return
+	}
+	
+	// Get user ID from JWT and verify ownership
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "User not authenticated")
+		return
+	}
+
+	// Verify mission ownership
+	var missionStatus string
+	err := database.DB.QueryRow(
+		`SELECT status FROM missions WHERE id = $1 AND user_id = $2`,
+		missionID, userID,
+	).Scan(&missionStatus)
+
+	if err == sql.ErrNoRows {
+		utils.ErrorResponse(c, http.StatusNotFound, "Mission not found")
+		return
+	} else if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "Database error")
+		return
+	}
+
+	// Check if mission is completed
+	if missionStatus != "completed" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "Mission is not completed yet")
+		return
+	}
+
+	// Get the file path from results
+	var filePath *string
+	var query string
+	
+	switch format {
+	case "netcdf":
+		query = `SELECT netcdf_path FROM mission_results WHERE mission_id = $1`
+	case "geojson":
+		query = `SELECT geojson_path FROM mission_results WHERE mission_id = $1`
+	case "pdf":
+		query = `SELECT pdf_report_path FROM mission_results WHERE mission_id = $1`
+	}
+	
+	err = database.DB.QueryRow(query, missionID).Scan(&filePath)
+	
+	if err == sql.ErrNoRows {
+		utils.ErrorResponse(c, http.StatusNotFound, "Results not found")
+		return
+	} else if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "Database error")
+		return
+	}
+	
+	if filePath == nil || *filePath == "" {
+		utils.ErrorResponse(c, http.StatusNotFound, fmt.Sprintf("%s file not available", format))
+		return
+	}
+	
+	// Download from S3 and stream to client
+	err = streamFromS3(c, *filePath, format, missionID)
+	if err != nil {
+		log.Printf("Failed to stream file from S3: %v", err)
+		utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to download file")
+		return
+	}
+}
+
+// streamFromS3 downloads a file from S3 and streams it to the client
+func streamFromS3(c *gin.Context, s3Path string, format string, missionID string) error {
+	// Parse S3 path (s3://bucket/key)
+	if len(s3Path) < 5 || s3Path[:5] != "s3://" {
+		return fmt.Errorf("invalid S3 path: %s", s3Path)
+	}
+	
+	pathParts := strings.SplitN(s3Path[5:], "/", 2)
+	if len(pathParts) != 2 {
+		return fmt.Errorf("invalid S3 path format: %s", s3Path)
+	}
+	
+	bucket := pathParts[0]
+	key := pathParts[1]
+	
+	// Initialize S3 client
+	s3Endpoint := os.Getenv("S3_ENDPOINT")
+	s3AccessKey := os.Getenv("S3_ACCESS_KEY")
+	s3SecretKey := os.Getenv("S3_SECRET_KEY")
+	
+	if s3Endpoint == "" || s3AccessKey == "" || s3SecretKey == "" {
+		return fmt.Errorf("S3 configuration not set")
+	}
+	
+	// Configure AWS session
+	sess, err := session.NewSession(&aws.Config{
+		Endpoint:         aws.String(s3Endpoint),
+		Region:           aws.String("us-east-1"),
+		Credentials:      credentials.NewStaticCredentials(s3AccessKey, s3SecretKey, ""),
+		S3ForcePathStyle: aws.Bool(true),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create AWS session: %w", err)
+	}
+	
+	s3Client := s3.New(sess)
+	
+	// Get object from S3
+	result, err := s3Client.GetObject(&s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get object from S3: %w", err)
+	}
+	defer result.Body.Close()
+	
+	// Set appropriate headers
+	var contentType string
+	var filename string
+	
+	switch format {
+	case "netcdf":
+		contentType = "application/x-netcdf"
+		filename = fmt.Sprintf("mission-%s-results.nc", missionID)
+	case "geojson":
+		contentType = "application/geo+json"
+		filename = fmt.Sprintf("mission-%s-trajectories.geojson", missionID)
+	case "pdf":
+		contentType = "application/pdf"
+		filename = fmt.Sprintf("mission-%s-report.pdf", missionID)
+	default:
+		contentType = "application/octet-stream"
+		filename = fmt.Sprintf("mission-%s-results", missionID)
+	}
+	
+	c.Header("Content-Type", contentType)
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+	
+	// Stream the file
+	_, err = io.Copy(c.Writer, result.Body)
+	return err
 }

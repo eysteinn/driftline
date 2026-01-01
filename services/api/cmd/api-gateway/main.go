@@ -79,6 +79,7 @@ func main() {
 			missions.DELETE("/:id", handlers.DeleteMission)
 			missions.GET("/:id/status", handlers.GetMissionStatus)
 			missions.GET("/:id/results", handlers.GetMissionResults)
+			missions.GET("/:id/results/download", handlers.DownloadMissionResults)
 		}
 	}
 
