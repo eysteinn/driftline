@@ -58,8 +58,6 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "   - Frontend:        http://localhost:3000"
     echo "   - API Server:      http://localhost:8000"
     echo "   - MinIO Console:   http://localhost:9001 (minioadmin/minioadmin)"
-    echo "   - Grafana:         http://localhost:3001 (admin/admin)"
-    echo "   - Prometheus:      http://localhost:9090"
     echo ""
     echo "📝 To view logs:"
     echo "   docker-compose -f docker-compose.dev.yml logs -f"

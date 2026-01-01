@@ -4,6 +4,8 @@ import (
 	"log"
 	"os"
 
+	"github.com/eysteinn/driftline/services/api/internal/database"
+	"github.com/eysteinn/driftline/services/api/internal/handlers"
 	"github.com/gin-gonic/gin"
 )
 
@@ -14,13 +16,19 @@ func main() {
 		port = "8000"
 	}
 
+	// Connect to database
+	if err := database.Connect(); err != nil {
+		log.Fatal("Failed to connect to database:", err)
+	}
+	defer database.Close()
+
 	// Initialize Gin router
 	router := gin.Default()
 
 	// Health check endpoint
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"status": "healthy",
+			"status":  "healthy",
 			"service": "driftline-api",
 		})
 	})
@@ -29,23 +37,13 @@ func main() {
 	v1 := router.Group("/v1")
 	{
 		// Auth routes
-		v1.POST("/auth/register", func(c *gin.Context) {
-			c.JSON(501, gin.H{"message": "Not implemented yet"})
-		})
-		v1.POST("/auth/login", func(c *gin.Context) {
-			c.JSON(501, gin.H{"message": "Not implemented yet"})
-		})
+		v1.POST("/auth/register", handlers.Register)
+		v1.POST("/auth/login", handlers.Login)
 
 		// Mission routes
-		v1.POST("/missions", func(c *gin.Context) {
-			c.JSON(501, gin.H{"message": "Not implemented yet"})
-		})
-		v1.GET("/missions", func(c *gin.Context) {
-			c.JSON(501, gin.H{"message": "Not implemented yet"})
-		})
-		v1.GET("/missions/:id", func(c *gin.Context) {
-			c.JSON(501, gin.H{"message": "Not implemented yet"})
-		})
+		v1.POST("/missions", handlers.CreateMission)
+		v1.GET("/missions", handlers.ListMissions)
+		v1.GET("/missions/:id", handlers.GetMission)
 	}
 
 	// Start server

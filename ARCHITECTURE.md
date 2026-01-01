@@ -243,24 +243,6 @@ driftline-results/
 - Development: nginx.dev.conf
 - Production: nginx.prod.conf with SSL
 
-### 10. Monitoring (Prometheus + Grafana)
-
-**Purpose**: System observability and alerting
-
-**Metrics Collected**:
-- API request rates and latencies
-- Mission creation/completion rates
-- Job queue depth
-- Worker utilization
-- Database performance
-- Storage usage
-
-**Dashboards**:
-- System overview
-- Mission analytics
-- Infrastructure metrics
-- Billing and usage
-
 ## Data Flow
 
 ### Mission Creation Flow
