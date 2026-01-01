@@ -23,6 +23,29 @@ from opendrift.readers import reader_netCDF_CF_generic
 from opendrift.models.leeway import Leeway
 import numpy as np
 
+# Import configuration
+try:
+    from config import (
+        DEFAULT_NUM_PARTICLES, DEFAULT_DURATION_HOURS, DEFAULT_OBJECT_TYPE,
+        DEFAULT_TIME_STEP, DEFAULT_OUTPUT_INTERVAL, DEFAULT_SEED_RADIUS,
+        RESULTS_BUCKET, JOB_QUEUE, DENSITY_MAP_PIXEL_SIZE,
+        STATUS_PROCESSING, STATUS_COMPLETED, STATUS_FAILED
+    )
+except ImportError:
+    # Fallback to defaults if config not available
+    DEFAULT_NUM_PARTICLES = 1000
+    DEFAULT_DURATION_HOURS = 24
+    DEFAULT_OBJECT_TYPE = 1
+    DEFAULT_TIME_STEP = 3600
+    DEFAULT_OUTPUT_INTERVAL = 3600
+    DEFAULT_SEED_RADIUS = 100
+    RESULTS_BUCKET = "driftline-results"
+    JOB_QUEUE = "drift_jobs"
+    DENSITY_MAP_PIXEL_SIZE = 1000
+    STATUS_PROCESSING = "processing"
+    STATUS_COMPLETED = "completed"
+    STATUS_FAILED = "failed"
+
 # Configure logging
 log_level = os.getenv('LOG_LEVEL', 'INFO')
 logging.basicConfig(
@@ -43,7 +66,7 @@ class DriftWorker:
         self.s3_access_key = os.getenv('S3_ACCESS_KEY')
         self.s3_secret_key = os.getenv('S3_SECRET_KEY')
         self.max_concurrent_jobs = int(os.getenv('MAX_CONCURRENT_JOBS', '2'))
-        self.queue_name = os.getenv('QUEUE_NAME', 'drift_jobs')
+        self.queue_name = os.getenv('QUEUE_NAME', JOB_QUEUE)
         self.poll_interval = int(os.getenv('POLL_INTERVAL', '5'))
         
         # Validate required configuration
@@ -151,7 +174,8 @@ class DriftWorker:
             logger.info(f"Updated mission {mission_id} status to {status}")
         except Exception as e:
             logger.error(f"Failed to update mission status: {e}")
-            raise
+            # Don't re-raise - we don't want to fail the job if DB update fails
+            # The job results will still be in S3
     
     def _download_forcing_data(self, mission_params: Dict[str, Any], 
                                temp_dir: str) -> Dict[str, str]:
@@ -174,7 +198,7 @@ class DriftWorker:
     
     def _upload_results(self, mission_id: str, result_file: str) -> str:
         """Upload simulation results to S3"""
-        bucket = 'driftline-results'
+        bucket = RESULTS_BUCKET
         key = f"{mission_id}/raw/particles.nc"
         
         try:
@@ -201,13 +225,13 @@ class DriftWorker:
         """Execute OpenDrift Leeway simulation"""
         logger.info("Initializing OpenDrift Leeway model...")
         
-        # Extract mission parameters
+        # Extract mission parameters with defaults
         lat = mission_params['latitude']
         lon = mission_params['longitude']
         start_time = datetime.fromisoformat(mission_params['start_time'].replace('Z', '+00:00'))
-        duration_hours = mission_params.get('duration_hours', 24)
-        num_particles = mission_params.get('num_particles', 1000)
-        object_type = mission_params.get('object_type', 1)  # Default to Person-in-water
+        duration_hours = mission_params.get('duration_hours', DEFAULT_DURATION_HOURS)
+        num_particles = mission_params.get('num_particles', DEFAULT_NUM_PARTICLES)
+        object_type = mission_params.get('object_type', DEFAULT_OBJECT_TYPE)
         
         # Initialize Leeway model
         o = Leeway(loglevel=logging.WARNING)
@@ -228,7 +252,7 @@ class DriftWorker:
         o.seed_elements(
             lon=lon,
             lat=lat,
-            radius=100,  # Seed in a 100m radius
+            radius=DEFAULT_SEED_RADIUS,
             number=num_particles,
             time=start_time,
             object_type=object_type
@@ -240,13 +264,13 @@ class DriftWorker:
         
         o.run(
             end_time=end_time,
-            time_step=3600,  # 1 hour time steps
-            time_step_output=3600  # Output every hour
+            time_step=DEFAULT_TIME_STEP,
+            time_step_output=DEFAULT_OUTPUT_INTERVAL
         )
         
         # Export results
         logger.info(f"Exporting results to {output_file}")
-        o.write_netcdf_density_map(output_file, pixelsize_m=1000)
+        o.write_netcdf_density_map(output_file, pixelsize_m=DENSITY_MAP_PIXEL_SIZE)
         
         # Also export animation (optional)
         try:
@@ -278,7 +302,7 @@ class DriftWorker:
         logger.info(f"Processing mission {mission_id}")
         
         # Update status to processing
-        self._update_mission_status(mission_id, 'processing')
+        self._update_mission_status(mission_id, STATUS_PROCESSING)
         
         temp_dir = None
         result_location = None
@@ -301,7 +325,7 @@ class DriftWorker:
             # Update mission status to completed
             self._update_mission_status(
                 mission_id, 
-                'completed',
+                STATUS_COMPLETED,
                 result_location=result_location
             )
             
@@ -320,7 +344,7 @@ class DriftWorker:
             # Update mission status to failed
             self._update_mission_status(
                 mission_id,
-                'failed',
+                STATUS_FAILED,
                 error_message=error_msg
             )
             
