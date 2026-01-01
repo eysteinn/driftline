@@ -48,19 +48,51 @@ cp .env.example .env
 
 ### 3. Start Development Environment
 
+**Option A: Using Quick Start Script (Recommended)**
+
 ```bash
-docker-compose -f docker-compose.dev.yml up --build
+./quick-start.sh
+```
+
+The script will:
+- Check Docker installation
+- Create `.env` file if needed
+- Start all services
+- Initialize the database schema automatically
+
+**Option B: Manual Start**
+
+```bash
+docker compose -f docker-compose.dev.yml up --build -d
+
+# Wait for database to be ready
+sleep 5
+
+# Initialize database schema (if not already done)
+docker exec -i driftline-postgres psql -U driftline_user -d driftline < sql/init/01_schema.sql
 ```
 
 This will start all services:
 
 - **Frontend**: http://localhost:3000
 - **API Server**: http://localhost:8000
-- **MinIO Console**: http://localhost:9001 (admin/minioadmin)
+- **MinIO Console**: http://localhost:9001 (minioadmin/minioadmin)
+- **Grafana**: http://localhost:3001 (admin/admin)
+- **Prometheus**: http://localhost:9090
 
-### 4. Initialize the Database
+### 4. Verify Setup
 
-The database schema is automatically initialized on first startup via the SQL scripts in `sql/init/`.
+Check that all services are running:
+
+```bash
+docker compose -f docker-compose.dev.yml ps
+```
+
+View logs:
+
+```bash
+docker compose -f docker-compose.dev.yml logs -f
+```
 
 ### 5. Access the Application
 
@@ -249,7 +281,59 @@ Contributions are welcome! Please follow these steps:
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📄 License
+## � Troubleshooting
+
+### Database Not Initialized
+
+If you get database errors about missing tables:
+
+```bash
+# Manually initialize the database
+docker exec -i driftline-postgres psql -U driftline_user -d driftline < sql/init/01_schema.sql
+```
+
+### Reset Everything
+
+To start fresh with clean volumes:
+
+```bash
+docker compose -f docker-compose.dev.yml down -v
+./quick-start.sh
+```
+
+### API Connection Refused
+
+Check if the API service is running:
+
+```bash
+docker compose -f docker-compose.dev.yml ps api
+docker compose -f docker-compose.dev.yml logs api
+```
+
+### Port Already in Use
+
+If you get port conflicts:
+
+```bash
+# Stop any conflicting services
+docker compose -f docker-compose.dev.yml down
+
+# Or change ports in docker-compose.dev.yml
+```
+
+### View Service Logs
+
+```bash
+# All services
+docker compose -f docker-compose.dev.yml logs -f
+
+# Specific service
+docker compose -f docker-compose.dev.yml logs -f api
+docker compose -f docker-compose.dev.yml logs -f frontend
+docker compose -f docker-compose.dev.yml logs -f drift-worker
+```
+
+## �📄 License
 
 This project is proprietary software. All rights reserved.
 

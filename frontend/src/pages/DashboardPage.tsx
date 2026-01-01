@@ -31,9 +31,9 @@ export default function DashboardPage() {
     fetchMissions()
   }, [fetchMissions])
 
-  const recentMissions = missions.slice(0, 5)
-  const completedCount = missions.filter(m => m.status === 'completed').length
-  const processingCount = missions.filter(m => m.status === 'processing' || m.status === 'queued').length
+  const recentMissions = (missions || []).slice(0, 5)
+  const completedCount = (missions || []).filter(m => m.status === 'completed').length
+  const processingCount = (missions || []).filter(m => m.status === 'processing' || m.status === 'queued').length
 
   const getStatusColor = (status: string) => {
     switch (status) {

@@ -29,7 +29,7 @@ export const useMissionStore = create<MissionState>((set) => ({
     set({ isLoading: true, error: null })
     try {
       const response = await apiClient.getMissions()
-      set({ missions: response.data, isLoading: false })
+      set({ missions: response.data || [], isLoading: false })
     } catch (error: any) {
       set({
         error: error.response?.data?.message || 'Failed to fetch missions',

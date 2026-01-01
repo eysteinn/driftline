@@ -52,11 +52,27 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     docker compose -f docker-compose.dev.yml up --build -d
     
     echo ""
-    echo "✅ Services are starting up!"
+    echo "⏳ Waiting for database to be ready..."
+    sleep 5
+    
+    # Check if database tables exist
+    TABLE_COUNT=$(docker exec driftline-postgres psql -U driftline_user -d driftline -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public';" 2>/dev/null | xargs || echo "0")
+    
+    if [ "$TABLE_COUNT" -eq "0" ]; then
+        echo "📊 Initializing database schema..."
+        docker exec -i driftline-postgres psql -U driftline_user -d driftline < sql/init/01_schema.sql
+        echo "✅ Database schema initialized!"
+    else
+        echo "✅ Database schema already exists ($TABLE_COUNT tables found)"
+    fi
+    
+    echo ""
+    echo "✅ Services are running!"
     echo ""
     echo "📊 Service URLs:"
     echo "   - Frontend:        http://localhost:3000"
     echo "   - API Server:      http://localhost:8000"
+    echo "   - API Docs:        http://localhost:8000/health"
     echo "   - MinIO Console:   http://localhost:9001 (minioadmin/minioadmin)"
     echo ""
     echo "📝 To view logs:"
@@ -64,6 +80,9 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo ""
     echo "🛑 To stop services:"
     echo "   docker compose -f docker-compose.dev.yml down"
+    echo ""
+    echo "🗑️  To reset database and volumes:"
+    echo "   docker compose -f docker-compose.dev.yml down -v"
     echo ""
 else
     echo ""

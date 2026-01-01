@@ -60,7 +60,7 @@ services:
     container_name: driftline-api
     environment:
       PORT: "8000"
-      DATABASE_URL: postgresql://driftline_user:dev_password@postgres:5432/driftline
+      DATABASE_URL: postgresql://driftline_user:dev_password@postgres:5432/driftline?sslmode=disable
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET_KEY: dev_secret_key_change_in_production
       JWT_EXPIRATION_MINUTES: "60"
@@ -103,7 +103,7 @@ services:
     container_name: driftline-drift-worker
     environment:
       REDIS_URL: redis://redis:6379/0
-      DATABASE_URL: postgresql://driftline_user:dev_password@postgres:5432/driftline
+      DATABASE_URL: postgresql://driftline_user:dev_password@postgres:5432/driftline?sslmode=disable
       S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY: minioadmin
       S3_SECRET_KEY: minioadmin
@@ -124,7 +124,7 @@ services:
     container_name: driftline-results-processor
     environment:
       REDIS_URL: redis://redis:6379/0
-      DATABASE_URL: postgresql://driftline_user:dev_password@postgres:5432/driftline
+      DATABASE_URL: postgresql://driftline_user:dev_password@postgres:5432/driftline?sslmode=disable
       S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY: minioadmin
       S3_SECRET_KEY: minioadmin
