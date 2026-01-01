@@ -43,11 +43,11 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       async (error: AxiosError) => {
-        const originalRequest = error.config
+        const originalRequest = error.config as any
 
         // If 401 and we have a refresh token, try to refresh
-        if (error.response?.status === 401 && originalRequest && !originalRequest.headers._retry) {
-          originalRequest.headers._retry = 'true'
+        if (error.response?.status === 401 && originalRequest && !originalRequest._isRetry) {
+          originalRequest._isRetry = true
           
           const refreshToken = localStorage.getItem('refreshToken')
           if (refreshToken) {

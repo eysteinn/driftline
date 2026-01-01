@@ -18,6 +18,12 @@ interface AuthState {
   clearError: () => void
 }
 
+// Helper function to store tokens
+const storeTokens = (accessToken: string, refreshToken: string) => {
+  localStorage.setItem('accessToken', accessToken)
+  localStorage.setItem('refreshToken', refreshToken)
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
@@ -33,9 +39,8 @@ export const useAuthStore = create<AuthState>()(
         try {
           const response = await apiClient.login({ email, password })
           
-          // Store tokens
-          localStorage.setItem('accessToken', response.accessToken)
-          localStorage.setItem('refreshToken', response.refreshToken)
+          // Store tokens using helper
+          storeTokens(response.accessToken, response.refreshToken)
           
           set({
             user: response.user,
@@ -58,9 +63,8 @@ export const useAuthStore = create<AuthState>()(
         try {
           const response = await apiClient.register({ email, password, fullName })
           
-          // Store tokens
-          localStorage.setItem('accessToken', response.accessToken)
-          localStorage.setItem('refreshToken', response.refreshToken)
+          // Store tokens using helper
+          storeTokens(response.accessToken, response.refreshToken)
           
           set({
             user: response.user,
