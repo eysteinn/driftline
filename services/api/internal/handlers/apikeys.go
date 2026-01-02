@@ -49,7 +49,7 @@ func ListApiKeys(c *gin.Context) {
 	}
 
 	rows, err := database.DB.Query(
-		`SELECT id, user_id, key_hash, name, scopes, is_active, last_used_at, created_at, expires_at
+		`SELECT id, user_id, key_hash, key_preview, name, scopes, is_active, last_used_at, created_at, expires_at
 		 FROM api_keys
 		 WHERE user_id = $1
 		 ORDER BY created_at DESC`,
@@ -66,16 +66,13 @@ func ListApiKeys(c *gin.Context) {
 		var key models.ApiKey
 		var scopesJSON []byte
 		err := rows.Scan(
-			&key.ID, &key.UserID, &key.KeyHash, &key.Name, &scopesJSON,
+			&key.ID, &key.UserID, &key.KeyHash, &key.KeyPreview, &key.Name, &scopesJSON,
 			&key.IsActive, &key.LastUsedAt, &key.CreatedAt, &key.ExpiresAt,
 		)
 		if err != nil {
 			utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to scan API key")
 			return
 		}
-
-		// Create key preview from hash (for display only)
-		key.KeyPreview = createKeyPreview(key.KeyHash)
 
 		apiKeys = append(apiKeys, key)
 	}
@@ -108,14 +105,15 @@ func CreateApiKey(c *gin.Context) {
 		return
 	}
 
-	// Hash the API key for storage
+	// Create preview and hash for storage
+	keyPreview := createKeyPreview(apiKey)
 	keyHash := hashApiKey(apiKey)
 
 	// Calculate expiration date if specified
 	var expiresAt *time.Time
 	if req.ExpiresInDays != nil {
 		if *req.ExpiresInDays <= 0 {
-			utils.ErrorResponse(c, http.StatusBadRequest, "ExpiresInDays must be positive or null for no expiration")
+			utils.ErrorResponse(c, http.StatusBadRequest, "ExpiresInDays must be positive or nil for no expiration")
 			return
 		}
 		expiry := time.Now().AddDate(0, 0, *req.ExpiresInDays)
@@ -136,10 +134,10 @@ func CreateApiKey(c *gin.Context) {
 	var keyID string
 	var createdAt time.Time
 	err = database.DB.QueryRow(
-		`INSERT INTO api_keys (user_id, key_hash, name, scopes, created_at, expires_at)
-		 VALUES ($1, $2, $3, $4, $5, $6)
+		`INSERT INTO api_keys (user_id, key_hash, key_preview, name, scopes, created_at, expires_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 RETURNING id, created_at`,
-		userID, keyHash, req.Name, scopesJSON, time.Now(), expiresAt,
+		userID, keyHash, keyPreview, req.Name, scopesJSON, time.Now(), expiresAt,
 	).Scan(&keyID, &createdAt)
 
 	if err != nil {
@@ -154,10 +152,10 @@ func CreateApiKey(c *gin.Context) {
 			ID:         keyID,
 			UserID:     userID,
 			Name:       req.Name,
+			KeyPreview: keyPreview,
 			IsActive:   true,
 			CreatedAt:  createdAt,
 			ExpiresAt:  expiresAt,
-			KeyPreview: createKeyPreview(apiKey),
 		},
 	}
 

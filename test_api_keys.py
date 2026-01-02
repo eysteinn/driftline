@@ -140,7 +140,7 @@ def test_database_schema():
     assert 'CREATE TABLE api_keys' in schema_content, "api_keys table not defined"
     assert 'key_hash' in schema_content, "key_hash column not in api_keys table"
     assert 'expires_at TIMESTAMP' in schema_content, "expires_at column not in api_keys table"
-    assert 'user_id UUID REFERENCES users(id) ON DELETE CASCADE' in schema_content, "user_id foreign key not proper"
+    assert 'user_id UUID REFERENCES users(id) ON DELETE CASCADE' in schema_content, "user_id foreign key not properly configured"
     
     print("✓ Database schema valid")
     print("  - api_keys table exists")
