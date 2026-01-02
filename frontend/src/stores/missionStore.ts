@@ -89,7 +89,7 @@ export const useMissionStore = create<MissionState>((set) => ({
   },
 
   fetchMissionResults: async (id: string) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null, currentResult: null })
     try {
       const result = await apiClient.getMissionResults(id)
       set({ currentResult: result, isLoading: false })
