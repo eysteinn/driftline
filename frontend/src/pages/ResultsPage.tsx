@@ -41,7 +41,7 @@ function MapCenterUpdater({ center }: { center: [number, number] }) {
   
   useEffect(() => {
     map.setView(center, map.getZoom(), { animate: true })
-  }, [center, map])
+  }, [center])
   
   return null
 }
