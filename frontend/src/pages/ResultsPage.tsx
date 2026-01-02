@@ -18,7 +18,7 @@ import {
   Download as DownloadIcon,
   ArrowBack as ArrowBackIcon,
 } from '@mui/icons-material'
-import { MapContainer, TileLayer, Marker, GeoJSON, Popup } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, GeoJSON, Popup, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import Layout from '../components/Layout'
 import { useMissionStore } from '../stores/missionStore'
@@ -34,6 +34,17 @@ const DefaultIcon = L.icon({
 })
 
 L.Marker.prototype.options.icon = DefaultIcon
+
+// Component to update map center when coordinates change
+function MapCenterUpdater({ center }: { center: [number, number] }) {
+  const map = useMap()
+  
+  useEffect(() => {
+    map.setView(center, map.getZoom(), { animate: true })
+  }, [center])
+  
+  return null
+}
 
 export default function ResultsPage() {
   const { id } = useParams<{ id: string }>()
@@ -169,6 +180,7 @@ export default function ResultsPage() {
                   zoom={8}
                   style={{ height: '100%', width: '100%' }}
                 >
+                  <MapCenterUpdater center={mapCenter} />
                   <TileLayer
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
