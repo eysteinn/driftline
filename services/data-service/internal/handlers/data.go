@@ -1,9 +1,9 @@
 package handlers
 
 import (
-	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/eysteinn/driftline/services/data-service/internal/models"
@@ -145,8 +145,7 @@ func parseFloat(s string) (float64, error) {
 	if s == "" {
 		return 0, models.ErrInvalidBounds
 	}
-	var f float64
-	_, err := fmt.Sscanf(s, "%f", &f)
+	f, err := strconv.ParseFloat(s, 64)
 	if err != nil {
 		return 0, err
 	}

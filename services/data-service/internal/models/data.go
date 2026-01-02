@@ -67,11 +67,6 @@ type TimeRange struct {
 	End   time.Time `json:"end"`
 }
 
-// CacheKey generates a unique cache key for a data request
-func (r *DataRequest) CacheKey() string {
-	return ""
-}
-
 // Validate checks if the data request is valid
 func (r *DataRequest) Validate() error {
 	if r.MinLat >= r.MaxLat {

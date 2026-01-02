@@ -92,8 +92,3 @@ func (s *Service) Exists(ctx context.Context, key string) (bool, error) {
 func (s *Service) Close() error {
 	return s.client.Close()
 }
-
-// GenerateDataCacheKey generates a cache key for environmental data requests
-func GenerateDataCacheKey(dataType, bounds, timeRange string) string {
-	return fmt.Sprintf("data:%s:%s:%s", dataType, bounds, timeRange)
-}

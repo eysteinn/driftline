@@ -64,14 +64,13 @@ func NewService(endpoint, accessKey, secretKey string) (*Service, error) {
 
 // Upload uploads a file to object storage
 func (s *Service) Upload(ctx context.Context, objectName, filePath string) error {
-	info, err := s.client.FPutObject(ctx, s.bucket, objectName, filePath, minio.PutObjectOptions{
+	_, err := s.client.FPutObject(ctx, s.bucket, objectName, filePath, minio.PutObjectOptions{
 		ContentType: "application/octet-stream",
 	})
 	if err != nil {
 		return fmt.Errorf("failed to upload file: %w", err)
 	}
 	
-	_ = info // Suppress unused warning
 	return nil
 }
 
