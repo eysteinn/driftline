@@ -121,13 +121,16 @@ func CreateApiKey(c *gin.Context) {
 	}
 
 	// Convert scopes to JSONB
-	var scopesJSON []byte
+	var scopesJSON interface{}
 	if req.Scopes != nil && len(req.Scopes) > 0 {
-		scopesJSON, err = json.Marshal(req.Scopes)
+		scopesBytes, err := json.Marshal(req.Scopes)
 		if err != nil {
 			utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to encode scopes")
 			return
 		}
+		scopesJSON = scopesBytes
+	} else {
+		scopesJSON = nil
 	}
 
 	// Insert into database
