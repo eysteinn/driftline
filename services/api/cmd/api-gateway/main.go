@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/eysteinn/driftline/services/api/internal/database"
 	"github.com/eysteinn/driftline/services/api/internal/handlers"
@@ -30,6 +31,24 @@ func main() {
 		log.Fatal("Failed to connect to Redis:", err)
 	}
 	defer queue.Close()
+
+	// Start background job to cleanup expired API keys
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		
+		// Run cleanup immediately on startup
+		if err := handlers.CleanupExpiredApiKeys(); err != nil {
+			log.Printf("Failed to cleanup expired API keys: %v", err)
+		}
+		
+		// Then run periodically
+		for range ticker.C {
+			if err := handlers.CleanupExpiredApiKeys(); err != nil {
+				log.Printf("Failed to cleanup expired API keys: %v", err)
+			}
+		}
+	}()
 
 	// Initialize Gin router
 	router := gin.Default()
@@ -67,6 +86,11 @@ func main() {
 		{
 			users.GET("/me", handlers.GetCurrentUser)
 			users.PATCH("/me", handlers.UpdateCurrentUser)
+			
+			// API key routes under /users/me/api-keys
+			users.GET("/me/api-keys", handlers.ListApiKeys)
+			users.POST("/me/api-keys", handlers.CreateApiKey)
+			users.DELETE("/me/api-keys/:id", handlers.DeleteApiKey)
 		}
 
 		// Protected mission routes

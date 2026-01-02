@@ -148,9 +148,10 @@ class ApiClient {
     return response.data.data
   }
 
-  async createApiKey(name: string, scopes?: string[]): Promise<{ key: string; apiKey: ApiKey }> {
+  async createApiKey(name: string, expiresInDays?: number | null, scopes?: string[]): Promise<{ key: string; apiKey: ApiKey }> {
     const response = await this.client.post<ApiResponse<{ key: string; apiKey: ApiKey }>>('/users/me/api-keys', {
       name,
+      expiresInDays,
       scopes,
     })
     return response.data.data
