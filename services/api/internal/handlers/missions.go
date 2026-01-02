@@ -160,7 +160,7 @@ func ListMissions(c *gin.Context) {
 // GetMission handles getting a specific mission by ID
 func GetMission(c *gin.Context) {
 	missionID := c.Param("id")
-	
+
 	// Get user ID from JWT and verify ownership
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
@@ -198,7 +198,7 @@ func GetMission(c *gin.Context) {
 // DeleteMission handles deleting a mission
 func DeleteMission(c *gin.Context) {
 	missionID := c.Param("id")
-	
+
 	// Get user ID from JWT and verify ownership
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
@@ -227,7 +227,7 @@ func DeleteMission(c *gin.Context) {
 // GetMissionStatus handles getting the status of a mission
 func GetMissionStatus(c *gin.Context) {
 	missionID := c.Param("id")
-	
+
 	// Get user ID from JWT and verify ownership
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
@@ -257,7 +257,7 @@ func GetMissionStatus(c *gin.Context) {
 // GetMissionResults handles getting the results of a completed mission
 func GetMissionResults(c *gin.Context) {
 	missionID := c.Param("id")
-	
+
 	// Get user ID from JWT and verify ownership
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
@@ -318,7 +318,9 @@ func GetMissionResults(c *gin.Context) {
 func DownloadMissionResults(c *gin.Context) {
 	missionID := c.Param("id")
 	format := c.Query("format")
-	
+
+	log.Printf("Download request: mission_id=%s, format=%s", missionID, format)
+
 	// Validate format parameter
 	validFormats := map[string]bool{
 		"netcdf":  true,
@@ -326,16 +328,20 @@ func DownloadMissionResults(c *gin.Context) {
 		"pdf":     true,
 	}
 	if !validFormats[format] {
+		log.Printf("Invalid format: %s", format)
 		utils.ErrorResponse(c, http.StatusBadRequest, "Invalid format. Must be one of: netcdf, geojson, pdf")
 		return
 	}
-	
+
 	// Get user ID from JWT and verify ownership
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
+		log.Printf("User not authenticated")
 		utils.ErrorResponse(c, http.StatusUnauthorized, "User not authenticated")
 		return
 	}
+
+	log.Printf("Checking mission ownership: mission_id=%s, user_id=%s", missionID, userID)
 
 	// Verify mission ownership
 	var missionStatus string
@@ -345,15 +351,20 @@ func DownloadMissionResults(c *gin.Context) {
 	).Scan(&missionStatus)
 
 	if err == sql.ErrNoRows {
+		log.Printf("Mission not found or not owned by user")
 		utils.ErrorResponse(c, http.StatusNotFound, "Mission not found")
 		return
 	} else if err != nil {
+		log.Printf("Database error checking mission: %v", err)
 		utils.ErrorResponse(c, http.StatusInternalServerError, "Database error")
 		return
 	}
 
+	log.Printf("Mission status: %s", missionStatus)
+
 	// Check if mission is completed
 	if missionStatus != "completed" {
+		log.Printf("Mission not completed yet")
 		utils.ErrorResponse(c, http.StatusBadRequest, "Mission is not completed yet")
 		return
 	}
@@ -361,7 +372,7 @@ func DownloadMissionResults(c *gin.Context) {
 	// Get the file path from results
 	var filePath *string
 	var query string
-	
+
 	switch format {
 	case "netcdf":
 		query = `SELECT netcdf_path FROM mission_results WHERE mission_id = $1`
@@ -370,22 +381,28 @@ func DownloadMissionResults(c *gin.Context) {
 	case "pdf":
 		query = `SELECT pdf_report_path FROM mission_results WHERE mission_id = $1`
 	}
-	
+
+	log.Printf("Executing query: %s with mission_id=%s", query, missionID)
 	err = database.DB.QueryRow(query, missionID).Scan(&filePath)
-	
+
 	if err == sql.ErrNoRows {
+		log.Printf("No results found in mission_results table")
 		utils.ErrorResponse(c, http.StatusNotFound, "Results not found")
 		return
 	} else if err != nil {
+		log.Printf("Database error querying results: %v", err)
 		utils.ErrorResponse(c, http.StatusInternalServerError, "Database error")
 		return
 	}
-	
+
+	log.Printf("File path retrieved: %v", filePath)
+
 	if filePath == nil || *filePath == "" {
+		log.Printf("%s file path is empty", format)
 		utils.ErrorResponse(c, http.StatusNotFound, fmt.Sprintf("%s file not available", format))
 		return
 	}
-	
+
 	// Download from S3 and stream to client
 	err = streamFromS3(c, *filePath, format, missionID)
 	if err != nil {
@@ -401,24 +418,24 @@ func streamFromS3(c *gin.Context, s3Path string, format string, missionID string
 	if len(s3Path) < 5 || s3Path[:5] != "s3://" {
 		return fmt.Errorf("invalid S3 path: %s", s3Path)
 	}
-	
+
 	pathParts := strings.SplitN(s3Path[5:], "/", 2)
 	if len(pathParts) != 2 {
 		return fmt.Errorf("invalid S3 path format: %s", s3Path)
 	}
-	
+
 	bucket := pathParts[0]
 	key := pathParts[1]
-	
+
 	// Initialize S3 client
 	s3Endpoint := os.Getenv("S3_ENDPOINT")
 	s3AccessKey := os.Getenv("S3_ACCESS_KEY")
 	s3SecretKey := os.Getenv("S3_SECRET_KEY")
-	
+
 	if s3Endpoint == "" || s3AccessKey == "" || s3SecretKey == "" {
 		return fmt.Errorf("S3 configuration not set")
 	}
-	
+
 	// Configure AWS session
 	sess, err := session.NewSession(&aws.Config{
 		Endpoint:         aws.String(s3Endpoint),
@@ -429,9 +446,9 @@ func streamFromS3(c *gin.Context, s3Path string, format string, missionID string
 	if err != nil {
 		return fmt.Errorf("failed to create AWS session: %w", err)
 	}
-	
+
 	s3Client := s3.New(sess)
-	
+
 	// Get object from S3
 	result, err := s3Client.GetObject(&s3.GetObjectInput{
 		Bucket: aws.String(bucket),
@@ -441,11 +458,11 @@ func streamFromS3(c *gin.Context, s3Path string, format string, missionID string
 		return fmt.Errorf("failed to get object from S3: %w", err)
 	}
 	defer result.Body.Close()
-	
+
 	// Set appropriate headers
 	var contentType string
 	var filename string
-	
+
 	switch format {
 	case "netcdf":
 		contentType = "application/x-netcdf"
@@ -460,10 +477,10 @@ func streamFromS3(c *gin.Context, s3Path string, format string, missionID string
 		contentType = "application/octet-stream"
 		filename = fmt.Sprintf("mission-%s-results", missionID)
 	}
-	
+
 	c.Header("Content-Type", contentType)
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
-	
+
 	// Stream the file
 	_, err = io.Copy(c.Writer, result.Body)
 	return err
