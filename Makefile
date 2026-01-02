@@ -79,6 +79,10 @@ lint: ## Run linters
 	cd frontend && npm run lint
 
 db-migrate: ## Run database migrations
+	@echo "Running database migrations..."
+	@./migrate.sh
+
+db-init: ## Initialize database schema (for fresh databases only)
 	docker-compose -f docker-compose.dev.yml exec postgres psql -U driftline_user -d driftline -f /docker-entrypoint-initdb.d/01_schema.sql
 
 db-shell: ## Open PostgreSQL shell

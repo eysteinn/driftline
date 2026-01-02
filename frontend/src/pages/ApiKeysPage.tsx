@@ -22,6 +22,11 @@ import {
   Card,
   CardContent,
   CircularProgress,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  FormHelperText,
 } from '@mui/material'
 import {
   Add as AddIcon,
@@ -38,6 +43,8 @@ export default function ApiKeysPage() {
   const [error, setError] = useState<string | null>(null)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [newKeyName, setNewKeyName] = useState('')
+  const [expiresInDays, setExpiresInDays] = useState<string>('never')
+  const [customDays, setCustomDays] = useState<string>('')
   const [newKeyValue, setNewKeyValue] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
 
@@ -60,13 +67,28 @@ export default function ApiKeysPage() {
   const handleCreateKey = async () => {
     if (!newKeyName.trim()) return
 
+    // Calculate expiresInDays value
+    let expiryDays: number | null = null
+    if (expiresInDays === 'custom') {
+      const days = parseInt(customDays)
+      if (isNaN(days) || days <= 0) {
+        setError('Please enter a valid number of days')
+        return
+      }
+      expiryDays = days
+    } else if (expiresInDays !== 'never') {
+      expiryDays = parseInt(expiresInDays)
+    }
+
     setCreating(true)
     setError(null)
     try {
-      const response = await apiClient.createApiKey(newKeyName)
+      const response = await apiClient.createApiKey(newKeyName, expiryDays)
       setNewKeyValue(response.key)
       await fetchApiKeys()
       setNewKeyName('')
+      setExpiresInDays('never')
+      setCustomDays('')
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to create API key')
     } finally {
@@ -95,6 +117,21 @@ export default function ApiKeysPage() {
     setCreateDialogOpen(false)
     setNewKeyValue(null)
     setNewKeyName('')
+    setExpiresInDays('never')
+    setCustomDays('')
+  }
+
+  const isExpired = (expiresAt?: string) => {
+    if (!expiresAt) return false
+    return new Date(expiresAt) < new Date()
+  }
+
+  const formatExpiration = (expiresAt?: string) => {
+    if (!expiresAt) return 'Never'
+    const expDate = new Date(expiresAt)
+    const now = new Date()
+    if (expDate < now) return 'Expired'
+    return expDate.toLocaleDateString()
   }
 
   return (
@@ -143,6 +180,7 @@ export default function ApiKeysPage() {
                     <TableCell>Name</TableCell>
                     <TableCell>Key</TableCell>
                     <TableCell>Status</TableCell>
+                    <TableCell>Expires</TableCell>
                     <TableCell>Last Used</TableCell>
                     <TableCell>Created</TableCell>
                     <TableCell align="right">Actions</TableCell>
@@ -157,11 +195,24 @@ export default function ApiKeysPage() {
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={key.isActive ? 'Active' : 'Inactive'}
-                          color={key.isActive ? 'success' : 'default'}
+                          label={
+                            isExpired(key.expiresAt)
+                              ? 'Expired'
+                              : key.isActive
+                              ? 'Active'
+                              : 'Inactive'
+                          }
+                          color={
+                            isExpired(key.expiresAt)
+                              ? 'error'
+                              : key.isActive
+                              ? 'success'
+                              : 'default'
+                          }
                           size="small"
                         />
                       </TableCell>
+                      <TableCell>{formatExpiration(key.expiresAt)}</TableCell>
                       <TableCell>
                         {key.lastUsedAt
                           ? new Date(key.lastUsedAt).toLocaleString()
@@ -238,6 +289,37 @@ export default function ApiKeysPage() {
                   margin="normal"
                   placeholder="e.g., Production Server"
                 />
+                <FormControl fullWidth margin="normal">
+                  <InputLabel id="expiration-label">Expiration</InputLabel>
+                  <Select
+                    labelId="expiration-label"
+                    value={expiresInDays}
+                    label="Expiration"
+                    onChange={(e) => setExpiresInDays(e.target.value)}
+                  >
+                    <MenuItem value="never">Never expires</MenuItem>
+                    <MenuItem value="7">7 days</MenuItem>
+                    <MenuItem value="30">30 days</MenuItem>
+                    <MenuItem value="90">90 days</MenuItem>
+                    <MenuItem value="365">1 year</MenuItem>
+                    <MenuItem value="custom">Custom...</MenuItem>
+                  </Select>
+                  <FormHelperText>
+                    Choose when this API key should expire, or never for infinite lifetime
+                  </FormHelperText>
+                </FormControl>
+                {expiresInDays === 'custom' && (
+                  <TextField
+                    fullWidth
+                    type="number"
+                    label="Custom Days"
+                    value={customDays}
+                    onChange={(e) => setCustomDays(e.target.value)}
+                    margin="normal"
+                    placeholder="Enter number of days"
+                    inputProps={{ min: 1 }}
+                  />
+                )}
               </Box>
             )}
           </DialogContent>
