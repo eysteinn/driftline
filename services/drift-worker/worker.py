@@ -288,16 +288,14 @@ class DriftWorker:
         # Run simulation
         end_time = start_time + timedelta(hours=duration_hours)
         logger.info(f"Running simulation from {start_time} to {end_time}")
+        logger.info(f"Exporting trajectory results to {output_file}")
         
         o.run(
             end_time=end_time,
             time_step=DEFAULT_TIME_STEP,
-            time_step_output=DEFAULT_OUTPUT_INTERVAL
+            time_step_output=DEFAULT_OUTPUT_INTERVAL,
+            outfile=output_file
         )
-        
-        # Export results
-        logger.info(f"Exporting results to {output_file}")
-        o.write_netcdf_density_map(output_file, pixelsize_m=DENSITY_MAP_PIXEL_SIZE)
         
         # Also export animation (optional)
         try:

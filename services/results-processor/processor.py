@@ -286,6 +286,78 @@ class ResultsProcessor:
         
         return temp_file.name
     
+    def _generate_pdf_report(self, mission_id: str, density: np.ndarray, 
+                            lon_centers: np.ndarray, lat_centers: np.ndarray,
+                            contours: Dict[str, Any], num_particles: int,
+                            num_timesteps: int, stranded_count: int) -> str:
+        """Generate a PDF report with simulation results"""
+        from matplotlib.backends.backend_pdf import PdfPages
+        
+        temp_file = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
+        
+        with PdfPages(temp_file.name) as pdf:
+            # Page 1: Title and Summary
+            fig = plt.figure(figsize=(8.5, 11))
+            fig.text(0.5, 0.95, 'SAR Drift Forecast Report', 
+                    ha='center', va='top', fontsize=20, weight='bold')
+            fig.text(0.5, 0.90, f'Mission ID: {mission_id}', 
+                    ha='center', va='top', fontsize=12)
+            fig.text(0.5, 0.87, f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M UTC")}', 
+                    ha='center', va='top', fontsize=10, style='italic')
+            
+            # Summary statistics
+            summary_text = f"""
+SIMULATION SUMMARY
+─────────────────────────────────────────────────
+Particles:            {num_particles:,}
+Timesteps:            {num_timesteps}
+Stranded:             {stranded_count} ({stranded_count/num_particles*100:.1f}%)
+
+MOST LIKELY POSITION
+─────────────────────────────────────────────────
+Latitude:             {contours['centroid_lat']:.6f}°
+Longitude:            {contours['centroid_lon']:.6f}°
+
+SEARCH AREA CONTOURS
+─────────────────────────────────────────────────
+50% probability area: {contours.get('50_area_km2', 'N/A')} km²
+90% probability area: {contours.get('90_area_km2', 'N/A')} km²
+95% probability area: {contours.get('95_area_km2', 'N/A')} km²
+            """
+            fig.text(0.1, 0.75, summary_text, ha='left', va='top', 
+                    fontsize=10, family='monospace')
+            
+            plt.axis('off')
+            pdf.savefig(fig, bbox_inches='tight')
+            plt.close()
+            
+            # Page 2: Density Heatmap
+            fig, ax = plt.subplots(figsize=(8.5, 11))
+            colors = ['#000033', '#000055', '#0000BB', '#0E4C92', '#2E8BC0', 
+                     '#19D3F3', '#FFF000', '#FF6B00', '#E60000']
+            cmap = LinearSegmentedColormap.from_list('custom', colors, N=100)
+            
+            lon_grid, lat_grid = np.meshgrid(lon_centers, lat_centers)
+            im = ax.pcolormesh(lon_grid, lat_grid, density, cmap=cmap, shading='auto')
+            
+            # Mark centroid
+            ax.plot(contours['centroid_lon'], contours['centroid_lat'], 
+                   'r*', markersize=20, label='Most Likely Position')
+            
+            ax.set_xlabel('Longitude', fontsize=12)
+            ax.set_ylabel('Latitude', fontsize=12)
+            ax.set_title('Drift Probability Density Map', fontsize=14, weight='bold')
+            ax.legend(loc='best')
+            ax.grid(True, alpha=0.3)
+            
+            cbar = plt.colorbar(im, ax=ax)
+            cbar.set_label('Probability Density', fontsize=10)
+            
+            pdf.savefig(fig, bbox_inches='tight')
+            plt.close()
+        
+        return temp_file.name
+    
     def process_results(self, mission_id: str, netcdf_path: str) -> Dict[str, Any]:
         """
         Process simulation results and generate derived products
@@ -352,10 +424,18 @@ class ResultsProcessor:
             logger.info("Creating heatmap visualization")
             heatmap_path = self._create_heatmap(density, lon_centers, lat_centers, mission_id)
             
+            # Generate PDF report
+            logger.info("Generating PDF report")
+            pdf_path = self._generate_pdf_report(
+                mission_id, density, lon_centers, lat_centers, contours,
+                num_particles, num_timesteps, stranded_count
+            )
+            
             # Upload products to S3
             logger.info("Uploading products to S3")
             geojson_s3 = self._upload_to_s3(geojson_path, f"{mission_id}/trajectories.geojson")
             heatmap_s3 = self._upload_to_s3(heatmap_path, f"{mission_id}/heatmap.png")
+            pdf_s3 = self._upload_to_s3(pdf_path, f"{mission_id}/report.pdf")
             
             # Update database with results
             logger.info("Updating database with results")
@@ -370,6 +450,7 @@ class ResultsProcessor:
                         search_area_90_geom = %s,
                         geojson_path = %s,
                         heatmap_path = %s,
+                        pdf_report_path = %s,
                         particle_count = %s,
                         stranded_count = %s
                     WHERE mission_id = %s
@@ -382,8 +463,10 @@ class ResultsProcessor:
                         json.dumps(search_area_90) if search_area_90 else None,
                         geojson_s3,
                         heatmap_s3,
+                        pdf_s3,
                         num_particles,
-                        stranded_count
+                        stranded_count,
+                        mission_id
                     )
                 )
                 self.db_conn.commit()
@@ -403,6 +486,7 @@ class ResultsProcessor:
                     'netcdf': netcdf_path,
                     'geojson': geojson_s3,
                     'heatmap': heatmap_s3,
+                    'pdf': pdf_s3,
                 }
             }
             
