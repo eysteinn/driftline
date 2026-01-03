@@ -14,6 +14,7 @@ type MissionResult struct {
 	CentroidTime            *time.Time      `json:"centroidTime" db:"centroid_time"`
 	SearchArea50Geom        json.RawMessage `json:"searchArea50Geom" db:"search_area_50_geom"`
 	SearchArea90Geom        json.RawMessage `json:"searchArea90Geom" db:"search_area_90_geom"`
+	TimestepContours        json.RawMessage `json:"timestepContours" db:"timestep_contours"`
 	NetcdfPath              *string         `json:"netcdfPath" db:"netcdf_path"`
 	GeojsonPath             *string         `json:"geojsonPath" db:"geojson_path"`
 	PdfReportPath           *string         `json:"pdfReportPath" db:"pdf_report_path"`
