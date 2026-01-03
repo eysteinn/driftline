@@ -303,9 +303,9 @@ func GetMissionResults(c *gin.Context) {
 		&result.CreatedAt,
 	)
 
-	// If query fails due to missing column, try without timestep_contours
-	if err != nil && err != sql.ErrNoRows {
-		// Try query without timestep_contours for backward compatibility
+	// If query fails due to missing column, try without timestep_contours for backward compatibility
+	if err != nil && err != sql.ErrNoRows && strings.Contains(err.Error(), "column") {
+		log.Printf("Falling back to query without timestep_contours column: %v", err)
 		err = database.DB.QueryRow(
 			`SELECT id, mission_id, centroid_lat, centroid_lon, centroid_time,
 			        search_area_50_geom, search_area_90_geom, netcdf_path,
@@ -320,13 +320,14 @@ func GetMissionResults(c *gin.Context) {
 			&result.ParticleCount, &result.StrandedCount, &result.ComputationTimeSeconds,
 			&result.CreatedAt,
 		)
-		// TimestepContours will be nil, which is fine
+		// TimestepContours will be nil, which is fine for backward compatibility
 	}
 
 	if err == sql.ErrNoRows {
 		utils.ErrorResponse(c, http.StatusNotFound, "Results not found")
 		return
 	} else if err != nil {
+		log.Printf("Database error fetching results: %v", err)
 		utils.ErrorResponse(c, http.StatusInternalServerError, "Database error")
 		return
 	}
