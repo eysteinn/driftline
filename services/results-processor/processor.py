@@ -287,9 +287,8 @@ class ResultsProcessor:
                 # Get timestamp
                 timestamp = times[time_idx]
                 
-                # Calculate hours elapsed from start
-                hours_elapsed = float(time_idx * (times[-1] - times[0]) / (num_timesteps - 1)) if num_timesteps > 1 else 0
-                hours_elapsed = hours_elapsed / np.timedelta64(1, 'h')  # Convert to hours
+                # Calculate hours elapsed from start (using actual time differences)
+                hours_elapsed = (timestamp - times[0]) / np.timedelta64(1, 'h')
                 
                 timestep_data = {
                     'time_index': int(time_idx),

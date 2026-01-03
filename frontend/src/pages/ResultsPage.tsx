@@ -320,10 +320,10 @@ export default function ResultsPage() {
                         step={1}
                         marks={[
                           { value: 0, label: '0h' },
-                          { 
+                          ...(maxTimeSteps > 2 ? [{
                             value: Math.floor((maxTimeSteps - 1) / 2), 
                             label: `${timestepContours[Math.floor((maxTimeSteps - 1) / 2)]?.hours_elapsed.toFixed(0) || ''}h` 
-                          },
+                          }] : []),
                           { 
                             value: maxTimeSteps - 1, 
                             label: `${timestepContours[maxTimeSteps - 1]?.hours_elapsed.toFixed(0) || ''}h` 
@@ -331,8 +331,11 @@ export default function ResultsPage() {
                         ]}
                         valueLabelDisplay="auto"
                         valueLabelFormat={(value) => {
-                          const ts = timestepContours[value]
-                          return ts ? `${ts.hours_elapsed.toFixed(1)}h` : ''
+                          if (value >= 0 && value < timestepContours.length) {
+                            const ts = timestepContours[value]
+                            return ts ? `${ts.hours_elapsed.toFixed(1)}h` : ''
+                          }
+                          return ''
                         }}
                       />
                     </Box>
