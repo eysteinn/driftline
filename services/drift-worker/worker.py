@@ -302,8 +302,7 @@ class DriftWorker:
             animation_file = output_file.replace('.nc', '_animation.mp4')
             o.animation(
                 filename=animation_file,
-                fast=True,
-                background='cartopy'
+                fast=False
             )
             logger.info(f"Created animation: {animation_file}")
         except Exception as e:
