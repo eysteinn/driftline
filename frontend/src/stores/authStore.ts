@@ -118,8 +118,8 @@ export const useAuthStore = create<AuthState>()(
       }),
       onRehydrateStorage: () => (state) => {
         // Ensure isAuthenticated is set correctly based on token presence
-        if (state && state.accessToken) {
-          state.isAuthenticated = true
+        if (state) {
+          state.isAuthenticated = !!state.accessToken
         }
       },
     }
