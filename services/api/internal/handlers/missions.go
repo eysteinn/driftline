@@ -290,7 +290,7 @@ func GetMissionResults(c *gin.Context) {
 	var result models.MissionResult
 	err = database.DB.QueryRow(
 		`SELECT id, mission_id, centroid_lat, centroid_lon, centroid_time,
-		        search_area_50_geom, search_area_90_geom, netcdf_path,
+		        search_area_50_geom, search_area_90_geom, timestep_contours, netcdf_path,
 		        geojson_path, pdf_report_path, particle_count, stranded_count,
 		        computation_time_seconds, created_at
 		 FROM mission_results WHERE mission_id = $1`,
@@ -298,7 +298,7 @@ func GetMissionResults(c *gin.Context) {
 	).Scan(
 		&result.ID, &result.MissionID, &result.CentroidLat, &result.CentroidLon,
 		&result.CentroidTime, &result.SearchArea50Geom, &result.SearchArea90Geom,
-		&result.NetcdfPath, &result.GeojsonPath, &result.PdfReportPath,
+		&result.TimestepContours, &result.NetcdfPath, &result.GeojsonPath, &result.PdfReportPath,
 		&result.ParticleCount, &result.StrandedCount, &result.ComputationTimeSeconds,
 		&result.CreatedAt,
 	)

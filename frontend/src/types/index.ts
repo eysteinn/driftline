@@ -76,6 +76,7 @@ export interface MissionResult {
   centroidTime?: string
   searchArea50Geom?: GeoJSON.Geometry
   searchArea90Geom?: GeoJSON.Geometry
+  timestepContours?: TimestepContour[]
   netcdfPath?: string
   geojsonPath?: string
   pdfReportPath?: string
@@ -83,6 +84,16 @@ export interface MissionResult {
   strandedCount?: number
   computationTimeSeconds?: number
   createdAt: string
+}
+
+export interface TimestepContour {
+  time_index: number
+  timestamp: string
+  hours_elapsed: number
+  centroid_lat: number
+  centroid_lon: number
+  search_area_50_geom?: GeoJSON.Geometry
+  search_area_90_geom?: GeoJSON.Geometry
 }
 
 // Object Types

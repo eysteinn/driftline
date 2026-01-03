@@ -114,11 +114,11 @@ class ResultsProcessor:
             logger.error(f"Failed to upload to S3: {e}")
             raise
     
-    def _calculate_density_and_contours(self, ds: xr.Dataset, final_time_idx: int = -1) -> Tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
-        """Calculate particle density and probability contours"""
-        # Get final positions
-        lons = ds['lon'].isel(time=final_time_idx).values
-        lats = ds['lat'].isel(time=final_time_idx).values
+    def _calculate_density_and_contours(self, ds: xr.Dataset, time_idx: int = -1) -> Tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
+        """Calculate particle density and probability contours for a specific time index"""
+        # Get positions at specified time index
+        lons = ds['lon'].isel(time=time_idx).values
+        lats = ds['lat'].isel(time=time_idx).values
         
         # Remove NaN values (stranded particles)
         valid_mask = ~(np.isnan(lons) | np.isnan(lats))
@@ -255,6 +255,60 @@ class ResultsProcessor:
         }
         
         return json.dumps(geojson)
+    
+    def _calculate_timestep_contours(self, ds: xr.Dataset) -> list:
+        """Calculate contours for all time steps in the simulation"""
+        logger.info("Calculating contours for all time steps")
+        
+        times = ds['time'].values
+        num_timesteps = len(times)
+        timestep_contours = []
+        
+        # Calculate contours for every time step (or subsample if too many)
+        # For performance, we'll calculate every N timesteps based on total duration
+        step_interval = max(1, num_timesteps // 24)  # Max 24 snapshots
+        
+        for time_idx in range(0, num_timesteps, step_interval):
+            try:
+                # Calculate density and contours for this time step
+                density, lon_centers, lat_centers, contours = self._calculate_density_and_contours(ds, time_idx)
+                
+                if density is None:
+                    continue
+                
+                # Generate search area polygons
+                search_area_50 = self._create_search_area_polygon(
+                    density, lon_centers, lat_centers, contours['50']
+                )
+                search_area_90 = self._create_search_area_polygon(
+                    density, lon_centers, lat_centers, contours['90']
+                )
+                
+                # Get timestamp
+                timestamp = times[time_idx]
+                
+                # Calculate hours elapsed from start
+                hours_elapsed = float(time_idx * (times[-1] - times[0]) / (num_timesteps - 1)) if num_timesteps > 1 else 0
+                hours_elapsed = hours_elapsed / np.timedelta64(1, 'h')  # Convert to hours
+                
+                timestep_data = {
+                    'time_index': int(time_idx),
+                    'timestamp': timestamp.astype('datetime64[us]').astype(object).isoformat(),
+                    'hours_elapsed': round(hours_elapsed, 1),
+                    'centroid_lat': float(contours['centroid_lat']),
+                    'centroid_lon': float(contours['centroid_lon']),
+                    'search_area_50_geom': search_area_50,
+                    'search_area_90_geom': search_area_90
+                }
+                
+                timestep_contours.append(timestep_data)
+                
+            except Exception as e:
+                logger.warning(f"Failed to calculate contours for time index {time_idx}: {e}")
+                continue
+        
+        logger.info(f"Calculated contours for {len(timestep_contours)} time steps")
+        return timestep_contours
     
     def _create_heatmap(self, density: np.ndarray, lon_centers: np.ndarray, 
                        lat_centers: np.ndarray, mission_id: str) -> str:
@@ -405,13 +459,17 @@ SEARCH AREA CONTOURS
             if density is None:
                 raise ValueError("Failed to calculate density - no valid particles")
             
-            # Generate search area polygons
+            # Generate search area polygons (final time step)
             search_area_50 = self._create_search_area_polygon(
                 density, lon_centers, lat_centers, contours['50']
             )
             search_area_90 = self._create_search_area_polygon(
                 density, lon_centers, lat_centers, contours['90']
             )
+            
+            # Calculate time-step contours for evolution visualization
+            logger.info("Calculating time-step contours")
+            timestep_contours = self._calculate_timestep_contours(ds)
             
             # Generate GeoJSON trajectories
             logger.info("Generating trajectory GeoJSON")
@@ -452,7 +510,8 @@ SEARCH AREA CONTOURS
                         heatmap_path = %s,
                         pdf_report_path = %s,
                         particle_count = %s,
-                        stranded_count = %s
+                        stranded_count = %s,
+                        timestep_contours = %s
                     WHERE mission_id = %s
                     """,
                     (
@@ -466,6 +525,7 @@ SEARCH AREA CONTOURS
                         pdf_s3,
                         num_particles,
                         stranded_count,
+                        json.dumps(timestep_contours) if timestep_contours else None,
                         mission_id
                     )
                 )
