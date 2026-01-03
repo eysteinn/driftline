@@ -36,12 +36,12 @@ func main() {
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
-		
+
 		// Run cleanup immediately on startup
 		if err := handlers.CleanupExpiredApiKeys(); err != nil {
 			log.Printf("Failed to cleanup expired API keys: %v", err)
 		}
-		
+
 		// Then run periodically
 		for range ticker.C {
 			if err := handlers.CleanupExpiredApiKeys(); err != nil {
@@ -53,9 +53,18 @@ func main() {
 	// Initialize Gin router
 	router := gin.Default()
 
-	// Configure CORS
+	// Configure CORS - Allow all origins in development
 	corsConfig := cors.DefaultConfig()
-	corsConfig.AllowOrigins = []string{"http://localhost:3000", "http://localhost:5173"}
+	corsConfig.AllowAllOrigins = true
+	// For production, use specific origins instead:
+	// corsConfig.AllowOrigins = []string{
+	// 	"http://localhost:3000",
+	// 	"http://localhost:5173",
+	// 	"http://localhost",
+	// 	"http://127.0.0.1:3000",
+	// 	"http://127.0.0.1:5173",
+	// 	"http://127.0.0.1",
+	// }
 	corsConfig.AllowCredentials = true
 	corsConfig.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
 	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
@@ -86,7 +95,7 @@ func main() {
 		{
 			users.GET("/me", handlers.GetCurrentUser)
 			users.PATCH("/me", handlers.UpdateCurrentUser)
-			
+
 			// API key routes under /users/me/api-keys
 			users.GET("/me/api-keys", handlers.ListApiKeys)
 			users.POST("/me/api-keys", handlers.CreateApiKey)
