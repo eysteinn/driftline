@@ -24,16 +24,19 @@ func TestCopernicusClient_FetchData_Success(t *testing.T) {
 			return
 		}
 
-		// Verify query parameters
+		// Verify query parameters for THREDDS NCSS API
 		query := r.URL.Query()
-		if query.Get("action") != "productdownload" {
-			t.Errorf("Expected action=productdownload, got %s", query.Get("action"))
+		if query.Get("north") == "" || query.Get("south") == "" {
+			t.Error("Expected spatial parameters (north/south)")
 		}
-		if query.Get("x_lo") == "" || query.Get("x_hi") == "" {
-			t.Error("Expected spatial parameters")
+		if query.Get("west") == "" || query.Get("east") == "" {
+			t.Error("Expected spatial parameters (west/east)")
 		}
-		if query.Get("t_lo") == "" || query.Get("t_hi") == "" {
+		if query.Get("time_start") == "" || query.Get("time_end") == "" {
 			t.Error("Expected temporal parameters")
+		}
+		if query.Get("accept") != "netcdf" {
+			t.Errorf("Expected accept=netcdf, got %s", query.Get("accept"))
 		}
 
 		// Return mock data
@@ -238,9 +241,9 @@ func TestCopernicusClient_FetchData_Retry(t *testing.T) {
 
 func TestCopernicusClient_HealthCheck_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify it's a health check request
-		if r.URL.Query().Get("action") != "describeproduct" {
-			t.Errorf("Expected describeproduct action, got %s", r.URL.Query().Get("action"))
+		// Verify it's a health check request for THREDDS catalog
+		if !strings.Contains(r.URL.Path, "catalog") {
+			t.Errorf("Expected catalog path for health check, got %s", r.URL.Path)
 		}
 
 		w.WriteHeader(http.StatusOK)
@@ -248,7 +251,7 @@ func TestCopernicusClient_HealthCheck_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewCopernicusClient(server.URL, "user", "pass")
+	client := NewCopernicusClient(server.URL+"/ncss", "user", "pass")
 
 	ctx := context.Background()
 	err := client.HealthCheck(ctx)
@@ -283,7 +286,7 @@ func TestCopernicusClient_HealthCheck_NoEndpoint(t *testing.T) {
 }
 
 func TestCopernicusClient_BuildMotuURL(t *testing.T) {
-	client := NewCopernicusClient("http://example.com/motu", "user", "pass")
+	client := NewCopernicusClient("http://example.com/thredds/ncss", "user", "pass")
 
 	req := &models.DataRequest{
 		DataType:  models.DataTypeOceanCurrents,
@@ -300,17 +303,17 @@ func TestCopernicusClient_BuildMotuURL(t *testing.T) {
 		t.Fatalf("buildMotuURL() error = %v", err)
 	}
 
-	// Verify URL contains expected parameters
+	// Verify URL contains expected parameters for THREDDS NCSS
 	expectedParams := []string{
-		"action=productdownload",
-		"x_lo=-20",
-		"x_hi=-10",
-		"y_lo=60",
-		"y_hi=70",
-		"t_lo=2024-01-01",
-		"t_hi=2024-01-02",
-		"variable=uo",
-		"variable=vo",
+		"north=70",
+		"south=60",
+		"west=-20",
+		"east=-10",
+		"time_start=2024-01-01",
+		"time_end=2024-01-02",
+		"var=uo",
+		"var=vo",
+		"accept=netcdf",
 	}
 
 	for _, param := range expectedParams {
@@ -476,11 +479,11 @@ func TestCopernicusClient_StreamingToFile(t *testing.T) {
 
 func TestCopernicusClient_CustomVariables(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		variables := r.URL.Query()["variable"]
+		variables := r.URL.Query()["var"]
 		if len(variables) != 3 {
 			t.Errorf("Expected 3 variables, got %d", len(variables))
 		}
-		if variables[0] != "custom1" || variables[1] != "custom2" || variables[2] != "custom3" {
+		if len(variables) >= 3 && (variables[0] != "custom1" || variables[1] != "custom2" || variables[2] != "custom3") {
 			t.Errorf("Unexpected variables: %v", variables)
 		}
 		w.WriteHeader(http.StatusOK)

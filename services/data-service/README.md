@@ -121,7 +121,9 @@ The service is configured via environment variables:
 To use ocean current data, you need to:
 1. Sign up for a free account at [Copernicus Marine](https://marine.copernicus.eu/)
 2. Set the `COPERNICUS_USERNAME` and `COPERNICUS_PASSWORD` environment variables
-3. The service will fetch data from the Global Ocean Physics Analysis and Forecast dataset by default
+3. The service uses the **new Copernicus Marine infrastructure** (post-migration from my.cmems-du.eu)
+4. Data is accessed via THREDDS NetCDF Subset Service (NCSS) endpoints
+5. Default dataset: Global Ocean Physics Analysis and Forecast (CMEMS dataset cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m)
 
 ## Development
 

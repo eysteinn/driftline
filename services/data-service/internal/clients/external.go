@@ -65,8 +65,9 @@ func NewCopernicusClient(endpoint, username, password string, opts ...Copernicus
 		password:   password,
 		httpClient: &http.Client{Timeout: 5 * time.Minute},
 		config: CopernicusConfig{
-			// Default configuration for CMEMS Global Ocean Physics Analysis
-			DatasetID: "cmems_mod_glo_phy_anfc_0.083deg_P1D-m",
+			// Default configuration for CMEMS Global Ocean Physics Analysis (NEW service)
+			// Using THREDDS/OPeNDAP endpoint which is part of the migrated infrastructure
+			DatasetID: "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m",
 			ServiceID: "GLOBAL_ANALYSISFORECAST_PHY_001_024-TDS",
 			ProductID: "global-analysis-forecast-phy-001-024",
 			Variables: []string{"uo", "vo"}, // eastward and northward velocities
@@ -112,7 +113,9 @@ func (c *CopernicusClient) FetchData(ctx context.Context, req *models.DataReques
 	return tmpPath, nil
 }
 
-// buildMotuURL constructs the Motu API request URL
+// buildMotuURL constructs the THREDDS NCSS API request URL
+// Note: Despite the name "buildMotuURL", this now builds THREDDS NCSS URLs
+// for compatibility with the new Copernicus Marine service infrastructure
 func (c *CopernicusClient) buildMotuURL(req *models.DataRequest) (string, error) {
 	if c.endpoint == "" {
 		return "", fmt.Errorf("endpoint not configured")
@@ -123,21 +126,25 @@ func (c *CopernicusClient) buildMotuURL(req *models.DataRequest) (string, error)
 		return "", fmt.Errorf("invalid endpoint URL: %w", err)
 	}
 	
-	// Build query parameters for Motu subsetting API
+	// Add dataset path to the endpoint
+	// For THREDDS NCSS, the full path includes the dataset
+	// Example: https://nrt.cmems-du.eu/thredds/ncss/global-analysis-forecast-phy-001-024/dataset.nc
+	if !strings.HasSuffix(u.Path, c.config.DatasetID) {
+		u.Path = u.Path + "/" + c.config.ProductID + "/" + c.config.DatasetID
+	}
+	
+	// Build query parameters for THREDDS NCSS API
 	q := u.Query()
-	q.Set("action", "productdownload")
-	q.Set("service", c.config.ServiceID)
-	q.Set("product", c.config.DatasetID)
 	
 	// Spatial subsetting
-	q.Set("x_lo", formatFloat(req.MinLon))
-	q.Set("x_hi", formatFloat(req.MaxLon))
-	q.Set("y_lo", formatFloat(req.MinLat))
-	q.Set("y_hi", formatFloat(req.MaxLat))
+	q.Set("north", formatFloat(req.MaxLat))
+	q.Set("south", formatFloat(req.MinLat))
+	q.Set("west", formatFloat(req.MinLon))
+	q.Set("east", formatFloat(req.MaxLon))
 	
 	// Temporal subsetting
-	q.Set("t_lo", req.StartTime.Format("2006-01-02 15:04:05"))
-	q.Set("t_hi", req.EndTime.Format("2006-01-02 15:04:05"))
+	q.Set("time_start", req.StartTime.Format("2006-01-02T15:04:05Z"))
+	q.Set("time_end", req.EndTime.Format("2006-01-02T15:04:05Z"))
 	
 	// Variables - use configured or requested variables
 	variables := c.config.Variables
@@ -145,13 +152,11 @@ func (c *CopernicusClient) buildMotuURL(req *models.DataRequest) (string, error)
 		variables = req.Variables
 	}
 	for _, v := range variables {
-		q.Add("variable", v)
+		q.Add("var", v)
 	}
 	
-	// Output mode and format
-	q.Set("mode", "console")
-	q.Set("out_dir", "/tmp")
-	q.Set("out_name", "data.nc")
+	// Output format
+	q.Set("accept", "netcdf")
 	
 	u.RawQuery = q.Encode()
 	return u.String(), nil
@@ -278,11 +283,14 @@ func (c *CopernicusClient) HealthCheck(ctx context.Context) error {
 		return fmt.Errorf("invalid endpoint URL: %w", err)
 	}
 	
-	// Build a minimal health check request
-	q := u.Query()
-	q.Set("action", "describeproduct")
-	q.Set("service", c.config.ServiceID)
-	u.RawQuery = q.Encode()
+	// Build a minimal health check request for THREDDS
+	// We'll check the catalog endpoint
+	catalogPath := strings.Replace(u.Path, "/ncss", "/catalog", 1)
+	if !strings.Contains(catalogPath, "catalog") {
+		// Fallback: just check the base endpoint
+		catalogPath = strings.TrimSuffix(u.Path, "/ncss") + "/catalog.html"
+	}
+	u.Path = catalogPath
 	
 	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
 	if err != nil {
@@ -401,7 +409,7 @@ func (f *DataClientFactory) GetClient(dataType models.DataType) (ExternalDataCli
 //
 // ```go
 // factory := NewDataClientFactory(
-//     "https://my.cmems-du.eu/motu-web/Motu",
+//     "https://nrt.cmems-du.eu/thredds/ncss",
 //     "username",
 //     "password",
 // )
