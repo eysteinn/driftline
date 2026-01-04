@@ -137,6 +137,7 @@ services:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       MAX_CONCURRENT_JOBS: "4"
+      DATA_SERVICE_URL: http://data-service:8000
     deploy:
       replicas: 4
       resources:
