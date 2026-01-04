@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/eysteinn/driftline/services/data-service/internal/models"
@@ -237,7 +238,7 @@ func isRetryableError(err error) bool {
 	
 	// Retry on 5xx server errors
 	for code := 500; code < 600; code++ {
-		if contains(errStr, fmt.Sprintf("HTTP %d", code)) {
+		if strings.Contains(errStr, fmt.Sprintf("HTTP %d", code)) {
 			return true
 		}
 	}
@@ -252,28 +253,11 @@ func isRetryableError(err error) bool {
 	}
 	
 	for _, pattern := range retryablePatterns {
-		if contains(errStr, pattern) {
+		if strings.Contains(errStr, pattern) {
 			return true
 		}
 	}
 	
-	return false
-}
-
-// contains checks if a string contains a substring (case-insensitive)
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && 
-		(s == substr || len(s) > len(substr) && 
-		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || 
-		len(s) > len(substr)*2 && stringContains(s, substr)))
-}
-
-func stringContains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
 	return false
 }
 
