@@ -21,10 +21,10 @@ from psycopg2.extras import RealDictCursor
 import boto3
 from botocore.client import Config
 from botocore.exceptions import ClientError
-from opendrift.readers import reader_netCDF_CF_generic
-from opendrift.models.leeway import Leeway
 import numpy as np
 import requests
+from opendrift.readers import reader_netCDF_CF_generic
+from opendrift.models.leeway import Leeway
 
 # Import configuration
 try:
@@ -190,6 +190,26 @@ class DriftWorker:
             # Don't re-raise - we don't want to fail the job if DB update fails
             # The job results will still be in S3
     
+    def _parse_mission_datetime(self, datetime_str: str) -> datetime:
+        """
+        Parse mission datetime string and return naive datetime for OpenDrift
+        
+        Args:
+            datetime_str: ISO format datetime string (may include 'Z' or timezone info)
+            
+        Returns:
+            Naive datetime object (no timezone info)
+        """
+        # Convert 'Z' to proper timezone format
+        parsed_str = datetime_str.replace('Z', '+00:00')
+        dt = datetime.fromisoformat(parsed_str)
+        
+        # OpenDrift expects naive datetimes, so remove timezone info
+        if dt.tzinfo is not None:
+            dt = dt.replace(tzinfo=None)
+        
+        return dt
+    
     def _download_forcing_data(self, mission_params: Dict[str, Any], 
                                temp_dir: str) -> Dict[str, str]:
         """Download required forcing data from data-service API"""
@@ -210,12 +230,12 @@ class DriftWorker:
         max_lon = lon + SPATIAL_BUFFER
         
         # Calculate end time
-        start_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+        start_time = self._parse_mission_datetime(start_time_str)
         end_time = start_time + timedelta(hours=duration_hours)
         
-        # Format times for API
-        start_time_iso = start_time.isoformat()
-        end_time_iso = end_time.isoformat()
+        # Format times for API (add back timezone info for API calls)
+        start_time_iso = start_time.isoformat() + 'Z'
+        end_time_iso = end_time.isoformat() + 'Z'
         
         # Data types to fetch
         data_types = [
@@ -272,7 +292,14 @@ class DriftWorker:
         return forcing_files
     
     def _download_from_storage(self, s3_path: str, local_path: str):
-        """Download a file from S3/MinIO storage"""
+        """
+        Download a file from S3/MinIO storage
+        
+        Args:
+            s3_path: S3 path in format 'bucket/path/to/file.nc' or 's3://bucket/path/to/file.nc'
+                     Must include both bucket name and file key/path
+            local_path: Local file path where the file will be saved
+        """
         # Parse S3 path (format: bucket/path/to/file.nc or s3://bucket/path/to/file.nc)
         if not s3_path:
             raise ValueError("S3 path cannot be empty")
@@ -281,10 +308,14 @@ class DriftWorker:
         s3_path = s3_path.replace('s3://', '')
         
         # Split on first slash to separate bucket from key
+        # We always expect both bucket and key since we're downloading files
         parts = s3_path.split('/', 1)
         
         if len(parts) != 2:
-            raise ValueError(f"Invalid S3 path format: {s3_path}. Expected format: 'bucket/path/to/file' or 's3://bucket/path/to/file'")
+            raise ValueError(
+                f"Invalid S3 path format: {s3_path}. "
+                f"Expected format with both bucket and key: 'bucket/path/to/file' or 's3://bucket/path/to/file'"
+            )
         
         bucket = parts[0]
         key = parts[1]
@@ -347,11 +378,8 @@ class DriftWorker:
         # Extract mission parameters with defaults
         lat = mission_params['latitude']
         lon = mission_params['longitude']
-        # Parse datetime and remove timezone info (OpenDrift expects naive datetimes)
-        start_time_str = mission_params['start_time'].replace('Z', '+00:00')
-        start_time = datetime.fromisoformat(start_time_str)
-        if start_time.tzinfo is not None:
-            start_time = start_time.replace(tzinfo=None)
+        # Parse datetime (OpenDrift expects naive datetimes)
+        start_time = self._parse_mission_datetime(mission_params['start_time'])
         duration_hours = mission_params.get('duration_hours', DEFAULT_DURATION_HOURS)
         num_particles = mission_params.get('num_particles', DEFAULT_NUM_PARTICLES)
         object_type = mission_params.get('object_type', DEFAULT_OBJECT_TYPE)
