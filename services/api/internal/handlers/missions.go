@@ -87,7 +87,7 @@ func CreateMission(c *gin.Context) {
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id, user_id, name, description, last_known_lat, last_known_lon,
 		          last_known_time, object_type, uncertainty_radius_m, forecast_hours,
-		          ensemble_size, config, status, job_id, error_message,
+		          ensemble_size, credits_cost, config, status, job_id, error_message,
 		          created_at, updated_at, completed_at`,
 		userID, req.Name, req.Description, req.LastKnownLat, req.LastKnownLon,
 		req.LastKnownTime, req.ObjectType, req.UncertaintyRadiusM,
@@ -95,7 +95,7 @@ func CreateMission(c *gin.Context) {
 	).Scan(
 		&mission.ID, &mission.UserID, &mission.Name, &mission.Description, &mission.LastKnownLat, &mission.LastKnownLon,
 		&mission.LastKnownTime, &mission.ObjectType, &mission.UncertaintyRadiusM, &mission.ForecastHours,
-		&mission.EnsembleSize, &mission.Config, &mission.Status, &mission.JobID, &mission.ErrorMessage,
+		&mission.EnsembleSize, &mission.CreditsCost, &mission.Config, &mission.Status, &mission.JobID, &mission.ErrorMessage,
 		&mission.CreatedAt, &mission.UpdatedAt, &mission.CompletedAt,
 	)
 
