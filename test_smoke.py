@@ -289,6 +289,9 @@ def test_docker_compose():
             compose_yaml = yaml.safe_load(f)
         
         drift_worker_deps = compose_yaml['services']['drift-worker'].get('depends_on', [])
+        # Handle both list and dict formats for depends_on
+        if isinstance(drift_worker_deps, dict):
+            drift_worker_deps = list(drift_worker_deps.keys())
         assert 'data-service' in drift_worker_deps, "drift-worker missing data-service dependency"
         
         print("✓ Docker Compose configuration valid")
