@@ -112,6 +112,16 @@ The service is configured via environment variables:
 | `S3_ENDPOINT` | MinIO/S3 endpoint | `http://localhost:9000` |
 | `S3_ACCESS_KEY` | S3 access key | `minioadmin` |
 | `S3_SECRET_KEY` | S3 secret key | `minioadmin` |
+| `COPERNICUS_ENDPOINT` | Copernicus Marine Motu API endpoint | `https://my.cmems-du.eu/motu-web/Motu` |
+| `COPERNICUS_USERNAME` | Copernicus Marine username | (required for ocean currents) |
+| `COPERNICUS_PASSWORD` | Copernicus Marine password | (required for ocean currents) |
+
+### Copernicus Marine Service
+
+To use ocean current data, you need to:
+1. Sign up for a free account at [Copernicus Marine](https://marine.copernicus.eu/)
+2. Set the `COPERNICUS_USERNAME` and `COPERNICUS_PASSWORD` environment variables
+3. The service will fetch data from the Global Ocean Physics Analysis and Forecast dataset by default
 
 ## Development
 
@@ -174,7 +184,7 @@ The Data Service is designed to work with:
 
 ## Future Enhancements
 
-- [ ] Implement actual external data source clients (Copernicus, NOAA)
+- [ ] Implement NOAA data source clients (GFS wind, WaveWatch III)
 - [ ] Add data format conversion (NetCDF, Zarr, GeoTIFF)
 - [ ] Implement data quality checks
 - [ ] Add support for data pre-warming/prefetching
@@ -182,6 +192,7 @@ The Data Service is designed to work with:
 - [ ] Add metrics and monitoring
 - [ ] Support for additional data sources (AIS, satellite data)
 - [ ] Data compression and optimization
+- [ ] Custom dataset selection for Copernicus (currently uses default)
 
 ## Current Status
 
@@ -192,12 +203,14 @@ The service is functional with:
 - ✅ Request validation
 - ✅ Error handling
 - ✅ Graceful degradation (works without Redis/MinIO)
+- ✅ Copernicus Marine ocean current data fetching
+- ✅ Retry logic with exponential backoff
+- ✅ Context cancellation support
 
 Pending implementation:
-- ⏳ External data source clients (Copernicus, NOAA)
-- ⏳ Actual data fetching and subsetting
-- ⏳ NetCDF processing
-- ⏳ Integration tests
+- ⏳ External data source clients (NOAA)
+- ⏳ NetCDF processing and format conversion
+- ⏳ Integration tests with live data sources
 
 ## License
 
