@@ -314,7 +314,7 @@ class DriftWorker:
         if len(parts) != 2:
             raise ValueError(
                 f"Invalid S3 path format: '{s3_path}'. "
-                f"Expected format: 'bucket/path/to/file' or 's3://bucket/path/to/file'"
+                "Expected format: 'bucket/path/to/file' or 's3://bucket/path/to/file'"
             )
         
         bucket = parts[0]

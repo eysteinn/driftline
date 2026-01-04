@@ -8,7 +8,7 @@ import os
 import sys
 import requests
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def test_data_service_connectivity():
     """Test that data-service is accessible"""
@@ -44,8 +44,8 @@ def test_data_service_api():
         'max_lat': 62.0,
         'min_lon': -5.0,
         'max_lon': -1.0,
-        'start_time': datetime.utcnow().isoformat() + 'Z',
-        'end_time': (datetime.utcnow() + timedelta(hours=24)).isoformat() + 'Z'
+        'start_time': datetime.now(timezone.utc).isoformat(),
+        'end_time': (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
     }
     
     endpoints = [
