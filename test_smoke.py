@@ -7,6 +7,7 @@ Tests individual components without requiring full Docker setup
 import sys
 import json
 import os
+import yaml
 from datetime import datetime
 from pathlib import Path
 
@@ -284,7 +285,6 @@ def test_docker_compose():
         assert 'depends_on:' in compose_content, "Missing service dependencies"
         
         # Verify drift-worker depends on data-service
-        import yaml
         with open(compose_file, 'r') as f:
             compose_yaml = yaml.safe_load(f)
         

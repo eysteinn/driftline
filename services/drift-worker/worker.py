@@ -274,14 +274,23 @@ class DriftWorker:
     def _download_from_storage(self, s3_path: str, local_path: str):
         """Download a file from S3/MinIO storage"""
         # Parse S3 path (format: bucket/path/to/file.nc or s3://bucket/path/to/file.nc)
+        if not s3_path:
+            raise ValueError("S3 path cannot be empty")
+        
+        # Remove s3:// prefix if present
         s3_path = s3_path.replace('s3://', '')
+        
+        # Split on first slash to separate bucket from key
         parts = s3_path.split('/', 1)
         
         if len(parts) != 2:
-            raise ValueError(f"Invalid S3 path format: {s3_path}")
+            raise ValueError(f"Invalid S3 path format: {s3_path}. Expected format: 'bucket/path/to/file' or 's3://bucket/path/to/file'")
         
         bucket = parts[0]
         key = parts[1]
+        
+        if not bucket or not key:
+            raise ValueError(f"Invalid S3 path: bucket and key cannot be empty")
         
         logger.debug(f"Downloading from S3: bucket={bucket}, key={key}")
         self.s3_client.download_file(bucket, key, local_path)

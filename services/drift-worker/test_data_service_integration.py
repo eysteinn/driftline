@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 
 def test_data_service_connectivity():
     """Test that data-service is accessible"""
-    data_service_url = os.getenv('DATA_SERVICE_URL', 'http://localhost:8003')
+    data_service_url = os.getenv('DATA_SERVICE_URL', 'http://localhost:8000')
     
     print(f"Testing data-service connectivity at {data_service_url}...")
     
@@ -34,7 +34,7 @@ def test_data_service_connectivity():
 
 def test_data_service_api():
     """Test that data-service API endpoints work"""
-    data_service_url = os.getenv('DATA_SERVICE_URL', 'http://localhost:8003')
+    data_service_url = os.getenv('DATA_SERVICE_URL', 'http://localhost:8000')
     
     print(f"\nTesting data-service API endpoints...")
     
