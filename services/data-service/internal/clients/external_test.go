@@ -482,8 +482,11 @@ func TestCopernicusClient_CustomVariables(t *testing.T) {
 		variables := r.URL.Query()["var"]
 		if len(variables) != 3 {
 			t.Errorf("Expected 3 variables, got %d", len(variables))
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("data"))
+			return
 		}
-		if len(variables) >= 3 && (variables[0] != "custom1" || variables[1] != "custom2" || variables[2] != "custom3") {
+		if variables[0] != "custom1" || variables[1] != "custom2" || variables[2] != "custom3" {
 			t.Errorf("Unexpected variables: %v", variables)
 		}
 		w.WriteHeader(http.StatusOK)

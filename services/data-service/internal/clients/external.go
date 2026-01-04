@@ -23,7 +23,7 @@ type ExternalDataClient interface {
 
 // CopernicusConfig holds configuration for Copernicus Marine data requests
 type CopernicusConfig struct {
-	// Dataset and service identifiers for Motu API
+	// Dataset and service identifiers for THREDDS NCSS API
 	DatasetID string
 	ServiceID string
 	ProductID string
