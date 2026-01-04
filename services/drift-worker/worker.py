@@ -313,15 +313,17 @@ class DriftWorker:
         
         if len(parts) != 2:
             raise ValueError(
-                f"Invalid S3 path format: {s3_path}. "
-                f"Expected format with both bucket and key: 'bucket/path/to/file' or 's3://bucket/path/to/file'"
+                f"Invalid S3 path format: '{s3_path}'. "
+                f"Expected format: 'bucket/path/to/file' or 's3://bucket/path/to/file'"
             )
         
         bucket = parts[0]
         key = parts[1]
         
-        if not bucket or not key:
-            raise ValueError(f"Invalid S3 path: bucket and key cannot be empty")
+        if not bucket:
+            raise ValueError(f"Invalid S3 path: bucket cannot be empty in '{s3_path}'")
+        if not key:
+            raise ValueError(f"Invalid S3 path: key cannot be empty in '{s3_path}'")
         
         logger.debug(f"Downloading from S3: bucket={bucket}, key={key}")
         self.s3_client.download_file(bucket, key, local_path)
