@@ -32,6 +32,9 @@ def test_worker_imports():
         assert hasattr(config, 'STATUS_PROCESSING'), "Config missing STATUS_PROCESSING"
         assert hasattr(config, 'STATUS_COMPLETED'), "Config missing STATUS_COMPLETED"
         assert hasattr(config, 'STATUS_FAILED'), "Config missing STATUS_FAILED"
+        assert hasattr(config, 'DEFAULT_DATA_SERVICE_URL'), "Config missing DEFAULT_DATA_SERVICE_URL"
+        assert hasattr(config, 'DATA_SERVICE_TIMEOUT'), "Config missing DATA_SERVICE_TIMEOUT"
+        assert hasattr(config, 'SPATIAL_BUFFER'), "Config missing SPATIAL_BUFFER"
         
         # Check worker file exists and has expected structure
         worker_file = worker_path / 'worker.py'
@@ -44,12 +47,20 @@ def test_worker_imports():
         assert 'def _run_opendrift_simulation' in worker_content, "DriftWorker missing _run_opendrift_simulation method"
         assert 'def _upload_results' in worker_content, "DriftWorker missing _upload_results method"
         assert 'def _update_mission_status' in worker_content, "DriftWorker missing _update_mission_status method"
+        assert 'def _download_forcing_data' in worker_content, "DriftWorker missing _download_forcing_data method"
+        assert 'def _download_from_storage' in worker_content, "DriftWorker missing _download_from_storage method"
         assert 'def run' in worker_content, "DriftWorker missing run method"
+        
+        # Check data-service integration
+        assert 'data_service_url' in worker_content, "Worker missing data_service_url configuration"
+        assert 'DATA_SERVICE_URL' in worker_content, "Worker missing DATA_SERVICE_URL environment variable"
+        assert 'requests.get' in worker_content, "Worker missing HTTP requests for data-service"
         
         print("✓ Worker structure valid")
         print(f"  - Default particles: {config.DEFAULT_NUM_PARTICLES}")
         print(f"  - Results bucket: {config.RESULTS_BUCKET}")
         print(f"  - Job queue: {config.JOB_QUEUE}")
+        print(f"  - Data service URL: {config.DEFAULT_DATA_SERVICE_URL}")
         print(f"  - Required methods: present")
         return True
     except Exception as e:
@@ -267,14 +278,24 @@ def test_docker_compose():
         assert 'REDIS_URL' in compose_content, "Missing REDIS_URL"
         assert 'S3_ENDPOINT' in compose_content, "Missing S3_ENDPOINT"
         assert 'JWT_SECRET_KEY' in compose_content, "Missing JWT_SECRET_KEY"
+        assert 'DATA_SERVICE_URL' in compose_content, "Missing DATA_SERVICE_URL"
         
         # Check dependencies
         assert 'depends_on:' in compose_content, "Missing service dependencies"
+        
+        # Verify drift-worker depends on data-service
+        import yaml
+        with open(compose_file, 'r') as f:
+            compose_yaml = yaml.safe_load(f)
+        
+        drift_worker_deps = compose_yaml['services']['drift-worker'].get('depends_on', [])
+        assert 'data-service' in drift_worker_deps, "drift-worker missing data-service dependency"
         
         print("✓ Docker Compose configuration valid")
         print(f"  - Services: {len(required_services)}")
         print(f"  - Environment variables: configured")
         print(f"  - Service dependencies: defined")
+        print(f"  - drift-worker → data-service: configured")
         return True
     except Exception as e:
         print(f"✗ Docker Compose test failed: {e}")

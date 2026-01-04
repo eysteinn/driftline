@@ -25,7 +25,8 @@ class TestDriftWorker(unittest.TestCase):
             'S3_ENDPOINT': 'http://localhost:9000',
             'S3_ACCESS_KEY': 'test_key',
             'S3_SECRET_KEY': 'test_secret',
-            'MAX_CONCURRENT_JOBS': '2'
+            'MAX_CONCURRENT_JOBS': '2',
+            'DATA_SERVICE_URL': 'http://data-service:8000'
         }
         
         for key, value in self.env_vars.items():
@@ -67,6 +68,89 @@ class TestDriftWorker(unittest.TestCase):
         # Assert configuration
         self.assertEqual(worker.max_concurrent_jobs, 2)
         self.assertEqual(worker.redis_url, self.env_vars['REDIS_URL'])
+        self.assertEqual(worker.data_service_url, self.env_vars['DATA_SERVICE_URL'])
+    
+    @patch('worker.psycopg2.connect')
+    @patch('worker.redis.from_url')
+    @patch('worker.boto3.client')
+    @patch('worker.requests.get')
+    def test_download_forcing_data_from_service(self, mock_requests_get, mock_boto3, mock_redis, mock_psycopg2):
+        """Test downloading forcing data from data-service"""
+        # Mock connections
+        mock_redis_client = Mock()
+        mock_redis_client.ping.return_value = True
+        mock_redis.return_value = mock_redis_client
+        
+        mock_db_conn = Mock()
+        mock_psycopg2.return_value = mock_db_conn
+        
+        mock_s3_client = Mock()
+        mock_boto3.return_value = mock_s3_client
+        
+        # Mock data-service response
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'file_path': 'environmental-data/ocean_currents/test.nc'
+        }
+        mock_requests_get.return_value = mock_response
+        
+        from worker import DriftWorker
+        
+        worker = DriftWorker()
+        
+        # Test forcing data download
+        mission_params = {
+            'latitude': 60.0,
+            'longitude': -3.0,
+            'start_time': '2024-01-01T12:00:00Z',
+            'duration_hours': 24
+        }
+        
+        with patch('tempfile.mkdtemp', return_value='/tmp/test'):
+            forcing_files = worker._download_forcing_data(mission_params, '/tmp/test')
+        
+        # Verify data-service was called
+        self.assertTrue(mock_requests_get.called)
+        call_args = mock_requests_get.call_args_list[0]
+        self.assertIn('ocean-currents', call_args[0][0])
+    
+    @patch('worker.psycopg2.connect')
+    @patch('worker.redis.from_url')
+    @patch('worker.boto3.client')
+    @patch('worker.requests.get')
+    def test_download_forcing_data_fallback(self, mock_requests_get, mock_boto3, mock_redis, mock_psycopg2):
+        """Test fallback when data-service is unavailable"""
+        # Mock connections
+        mock_redis_client = Mock()
+        mock_redis_client.ping.return_value = True
+        mock_redis.return_value = mock_redis_client
+        
+        mock_db_conn = Mock()
+        mock_psycopg2.return_value = mock_db_conn
+        
+        mock_s3_client = Mock()
+        mock_boto3.return_value = mock_s3_client
+        
+        # Mock data-service failure
+        mock_requests_get.side_effect = Exception("Connection error")
+        
+        from worker import DriftWorker
+        
+        worker = DriftWorker()
+        
+        # Test forcing data download with failure
+        mission_params = {
+            'latitude': 60.0,
+            'longitude': -3.0,
+            'start_time': '2024-01-01T12:00:00Z',
+            'duration_hours': 24
+        }
+        
+        forcing_files = worker._download_forcing_data(mission_params, '/tmp/test')
+        
+        # Should return empty dict on failure
+        self.assertEqual(forcing_files, {})
     
     @patch('worker.psycopg2.connect')
     @patch('worker.redis.from_url')
