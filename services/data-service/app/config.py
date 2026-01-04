@@ -10,6 +10,9 @@ class Config:
     
     # Server
     PORT: int = int(os.getenv('PORT', '8000'))
+    # Note: 0.0.0.0 is used by default for Docker container compatibility
+    # In production, this should be behind a reverse proxy (nginx)
+    # For local development without Docker, set HOST=127.0.0.1
     HOST: str = os.getenv('HOST', '0.0.0.0')
     DEBUG: bool = os.getenv('DEBUG', 'false').lower() == 'true'
     

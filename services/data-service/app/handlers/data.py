@@ -2,7 +2,7 @@
 API handlers for environmental data endpoints
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify
 from app.models import (
     DataRequest, DataType, InvalidBoundsError,
@@ -118,7 +118,7 @@ def _parse_query_params(data_type: DataType) -> DataRequest:
             ) from e
     else:
         # Default to current time
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
     
     if end_time_str:
         try:
@@ -129,7 +129,6 @@ def _parse_query_params(data_type: DataType) -> DataRequest:
             ) from e
     else:
         # Default to 48 hours from start
-        from datetime import timedelta
         end_time = start_time + timedelta(hours=48)
     
     # Optional parameters

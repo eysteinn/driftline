@@ -5,7 +5,7 @@ import logging
 import hashlib
 import tempfile
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import xarray as xr
 from app.config import config
@@ -220,7 +220,7 @@ class DataService:
             file_path=file_path,
             file_url=file_url,
             metadata=metadata,
-            expires_at=datetime.utcnow() + timedelta(hours=24)
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=24)
         )
     
     def _extract_metadata(self, request: DataRequest, file_path: str) -> Metadata:
