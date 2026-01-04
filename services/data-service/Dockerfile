@@ -1,20 +1,28 @@
-FROM golang:1.23-alpine AS builder
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy go mod files
-COPY go.mod go.sum* ./
-RUN go mod download
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libnetcdf-dev \
+    libhdf5-dev \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o data-service ./cmd/data-service
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-FROM alpine:latest
+# Copy application code
+COPY app/ ./app/
 
-WORKDIR /root/
-
-COPY --from=builder /app/data-service .
-
+# Expose port
 EXPOSE 8000
 
-CMD ["./data-service"]
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV FLASK_APP=app.main:create_app
+
+# Run the application
+CMD ["python", "-m", "app.main"]
