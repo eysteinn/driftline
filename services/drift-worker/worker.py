@@ -294,7 +294,8 @@ class DriftWorker:
             logger.info(f"Backtracking mode enabled - using negative time step: {time_step}s")
         
         # Run simulation
-        end_time = start_time + timedelta(hours=duration_hours if not backtracking else -duration_hours)
+        duration = duration_hours if not backtracking else -duration_hours
+        end_time = start_time + timedelta(hours=duration)
         logger.info(f"Running simulation from {start_time} to {end_time}")
         logger.info(f"Exporting trajectory results to {output_file}")
         

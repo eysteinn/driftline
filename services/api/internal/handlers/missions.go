@@ -42,10 +42,6 @@ func CreateMission(c *gin.Context) {
 	if req.EnsembleSize == 0 {
 		req.EnsembleSize = 1000
 	}
-	if req.Backtracking == nil {
-		defaultBacktracking := false
-		req.Backtracking = &defaultBacktracking
-	}
 
 	// Insert mission into database
 	var mission models.Mission
@@ -91,7 +87,7 @@ func CreateMission(c *gin.Context) {
 		DurationHours: req.ForecastHours,
 		NumParticles:  req.EnsembleSize,
 		ObjectType:    objectTypeInt,
-		Backtracking:  *req.Backtracking,
+		Backtracking:  req.Backtracking,
 	}
 
 	if err := queue.EnqueueDriftJob(mission.ID, jobParams); err != nil {
