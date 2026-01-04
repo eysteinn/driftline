@@ -39,6 +39,7 @@ export interface Mission {
   uncertaintyRadiusM?: number
   forecastHours: number
   ensembleSize: number
+  backtracking?: boolean
   config?: Record<string, any>
   status: MissionStatus
   jobId?: string
@@ -64,6 +65,7 @@ export interface CreateMissionRequest {
   uncertaintyRadiusM?: number
   forecastHours: number
   ensembleSize?: number
+  backtracking?: boolean
   config?: Record<string, any>
 }
 

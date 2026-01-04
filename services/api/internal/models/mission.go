@@ -17,6 +17,7 @@ type Mission struct {
 	UncertaintyRadiusM *float64   `json:"uncertaintyRadiusM" db:"uncertainty_radius_m"`
 	ForecastHours      int        `json:"forecastHours" db:"forecast_hours"`
 	EnsembleSize       int        `json:"ensembleSize" db:"ensemble_size"`
+	Backtracking       bool       `json:"backtracking" db:"backtracking"`
 	Config             *string    `json:"config" db:"config"`
 	Status             string     `json:"status" db:"status"`
 	JobID              *string    `json:"jobId" db:"job_id"`
@@ -37,6 +38,7 @@ type CreateMissionRequest struct {
 	UncertaintyRadiusM *float64  `json:"uncertaintyRadiusM"`
 	ForecastHours      int       `json:"forecastHours" binding:"required,min=1,max=168"`
 	EnsembleSize       int       `json:"ensembleSize" binding:"min=100,max=10000"`
+	Backtracking       bool      `json:"backtracking"`
 }
 
 // MissionListResponse represents a paginated list of missions

@@ -11,6 +11,9 @@ import {
   MenuItem,
   Alert,
   CircularProgress,
+  FormControlLabel,
+  Switch,
+  Tooltip,
 } from '@mui/material'
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -57,6 +60,7 @@ export default function NewMissionPage() {
     uncertaintyRadiusM: 5000,
     forecastHours: 48,
     ensembleSize: 1000,
+    backtracking: false,
   })
 
   const [markerPosition, setMarkerPosition] = useState<L.LatLng>(
@@ -160,13 +164,14 @@ export default function NewMissionPage() {
 
                 <TextField
                   fullWidth
-                  label="Last Known Time"
+                  label={formData.backtracking ? "Observation Time" : "Last Known Time"}
                   type="datetime-local"
                   required
                   value={formData.lastKnownTime}
                   onChange={(e) => handleChange('lastKnownTime', e.target.value)}
                   margin="normal"
                   InputLabelProps={{ shrink: true }}
+                  helperText={formData.backtracking ? "Time when object was observed" : "Last known time of the object"}
                 />
 
                 <Grid container spacing={2} sx={{ mt: 1 }}>
@@ -206,14 +211,14 @@ export default function NewMissionPage() {
 
                 <TextField
                   fullWidth
-                  label="Forecast Hours"
+                  label={formData.backtracking ? "Backtrack Hours" : "Forecast Hours"}
                   type="number"
                   required
                   value={formData.forecastHours}
                   onChange={(e) => handleChange('forecastHours', parseInt(e.target.value))}
                   margin="normal"
                   inputProps={{ min: 1, max: 168 }}
-                  helperText="Number of hours to forecast (1-168)"
+                  helperText={formData.backtracking ? "Number of hours to backtrack (1-168)" : "Number of hours to forecast (1-168)"}
                 />
 
                 <TextField
@@ -226,6 +231,25 @@ export default function NewMissionPage() {
                   inputProps={{ min: 100, max: 10000 }}
                   helperText="Number of particles (100-10000)"
                 />
+
+                <Box sx={{ mt: 2 }}>
+                  <Tooltip title="Run simulation backwards in time from the observation point to determine where the object originated">
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={formData.backtracking}
+                          onChange={(e) => handleChange('backtracking', e.target.checked)}
+                        />
+                      }
+                      label="Enable Backtracking / Reverse Modeling"
+                    />
+                  </Tooltip>
+                  <Typography variant="caption" display="block" color="text.secondary" sx={{ ml: 4 }}>
+                    {formData.backtracking
+                      ? 'Particles will drift backwards in time to determine origin'
+                      : 'Particles will drift forward in time to forecast future positions'}
+                  </Typography>
+                </Box>
 
                 <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
                   <Button
@@ -253,7 +277,7 @@ export default function NewMissionPage() {
             <Grid item xs={12} md={6}>
               <Paper sx={{ p: 3 }}>
                 <Typography variant="h6" gutterBottom>
-                  Last Known Position
+                  {formData.backtracking ? "Observation Position" : "Last Known Position"}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" gutterBottom>
                   Click on the map to set the position
