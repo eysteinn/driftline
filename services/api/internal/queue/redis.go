@@ -56,6 +56,7 @@ type DriftJobParams struct {
 	DurationHours int     `json:"duration_hours"`
 	NumParticles  int     `json:"num_particles"`
 	ObjectType    int     `json:"object_type"`
+	Backtracking  bool    `json:"backtracking"`
 }
 
 // DriftJob represents a drift simulation job

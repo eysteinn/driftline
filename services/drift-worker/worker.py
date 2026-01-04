@@ -262,6 +262,7 @@ class DriftWorker:
         duration_hours = mission_params.get('duration_hours', DEFAULT_DURATION_HOURS)
         num_particles = mission_params.get('num_particles', DEFAULT_NUM_PARTICLES)
         object_type = mission_params.get('object_type', DEFAULT_OBJECT_TYPE)
+        backtracking = mission_params.get('backtracking', False)
         
         # Initialize Leeway model
         o = Leeway(loglevel=logging.WARNING)
@@ -285,14 +286,21 @@ class DriftWorker:
             object_type=object_type
         )
         
+        # Determine time_step based on backtracking mode
+        # For backtracking (reverse modeling), use negative time_step
+        time_step = DEFAULT_TIME_STEP
+        if backtracking:
+            time_step = -DEFAULT_TIME_STEP
+            logger.info(f"Backtracking mode enabled - using negative time step: {time_step}s")
+        
         # Run simulation
-        end_time = start_time + timedelta(hours=duration_hours)
+        end_time = start_time + timedelta(hours=duration_hours if not backtracking else -duration_hours)
         logger.info(f"Running simulation from {start_time} to {end_time}")
         logger.info(f"Exporting trajectory results to {output_file}")
         
         o.run(
             end_time=end_time,
-            time_step=DEFAULT_TIME_STEP,
+            time_step=time_step,
             time_step_output=DEFAULT_OUTPUT_INTERVAL,
             outfile=output_file
         )
