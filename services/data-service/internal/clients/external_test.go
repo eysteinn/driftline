@@ -78,7 +78,7 @@ func TestCopernicusClient_FetchData_Success(t *testing.T) {
 	}
 
 	// Clean up
-	os.Remove(filePath)
+	_ = os.Remove(filePath)
 }
 
 func TestCopernicusClient_FetchData_InvalidRequest(t *testing.T) {
@@ -233,7 +233,7 @@ func TestCopernicusClient_FetchData_Retry(t *testing.T) {
 	}
 
 	// Clean up
-	os.Remove(filePath)
+	_ = os.Remove(filePath)
 }
 
 func TestCopernicusClient_HealthCheck_Success(t *testing.T) {
@@ -471,7 +471,7 @@ func TestCopernicusClient_StreamingToFile(t *testing.T) {
 	}
 
 	// Clean up
-	os.Remove(filePath)
+	_ = os.Remove(filePath)
 }
 
 func TestCopernicusClient_CustomVariables(t *testing.T) {
@@ -508,5 +508,5 @@ func TestCopernicusClient_CustomVariables(t *testing.T) {
 	}
 
 	// Clean up
-	os.Remove(filePath)
+	_ = os.Remove(filePath)
 }
