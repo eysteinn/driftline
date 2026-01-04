@@ -23,6 +23,29 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Credit cost constants
+const (
+	BaseMissionCost        = 10   // Base cost for any mission
+	CostPerDay             = 1    // Cost per 24 hours of forecast
+	CostPer1000Particles   = 1    // Cost per 1000 particles beyond base
+	BaseParticleCount      = 1000 // Base particle count included in base cost
+)
+
+// CalculateMissionCost calculates the credit cost for a mission based on its parameters
+func CalculateMissionCost(forecastHours int, ensembleSize int) int {
+	cost := BaseMissionCost
+	
+	// Add cost for forecast duration (round up to full days)
+	cost += (forecastHours + 23) / 24
+	
+	// Add cost for particles beyond base count
+	if ensembleSize > BaseParticleCount {
+		cost += (ensembleSize - BaseParticleCount) / 1000
+	}
+	
+	return cost
+}
+
 // CreateMission handles creating a new drift forecast mission
 func CreateMission(c *gin.Context) {
 	var req models.CreateMissionRequest
@@ -44,14 +67,7 @@ func CreateMission(c *gin.Context) {
 	}
 
 	// Calculate credit cost based on mission parameters
-	// Base cost: 10 credits
-	// Additional cost: 1 credit per 24 hours of forecast
-	// Additional cost: 1 credit per 1000 particles beyond 1000
-	creditsCost := 10
-	creditsCost += (req.ForecastHours + 23) / 24 // Round up hours to days
-	if req.EnsembleSize > 1000 {
-		creditsCost += (req.EnsembleSize - 1000) / 1000
-	}
+	creditsCost := CalculateMissionCost(req.ForecastHours, req.EnsembleSize)
 
 	// Check if user has sufficient credits
 	var currentBalance int
@@ -111,7 +127,10 @@ func CreateMission(c *gin.Context) {
 	if err != nil {
 		// Failed to deduct credits - delete the mission and return error
 		log.Printf("Failed to deduct credits for mission %s: %v", mission.ID, err)
-		database.DB.Exec(`DELETE FROM missions WHERE id = $1`, mission.ID)
+		_, deleteErr := database.DB.Exec(`DELETE FROM missions WHERE id = $1`, mission.ID)
+		if deleteErr != nil {
+			log.Printf("Failed to cleanup mission %s after credit deduction failure: %v", mission.ID, deleteErr)
+		}
 		utils.ErrorResponse(c, http.StatusPaymentRequired, fmt.Sprintf("Failed to deduct credits: %v", err))
 		return
 	}

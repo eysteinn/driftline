@@ -62,6 +62,19 @@ func GetCreditTransactions(c *gin.Context) {
 	page := 1
 	pageSize := 50
 
+	// Get total count of transactions
+	var totalCount int
+	err := database.DB.QueryRow(
+		`SELECT COUNT(*) FROM credit_transactions WHERE user_id = $1`,
+		userID,
+	).Scan(&totalCount)
+	if err != nil {
+		log.Printf("Database error counting transactions: %v", err)
+		utils.ErrorResponse(c, http.StatusInternalServerError, "Database error")
+		return
+	}
+
+	// Get paginated transactions
 	rows, err := database.DB.Query(
 		`SELECT id, user_id, transaction_type, amount, balance_after, description,
 		        mission_id, package_id, stripe_payment_id, stripe_subscription_id,
@@ -99,7 +112,7 @@ func GetCreditTransactions(c *gin.Context) {
 		transactions = []models.CreditTransaction{}
 	}
 
-	utils.PaginatedResponse(c, transactions, len(transactions), page, pageSize)
+	utils.PaginatedResponse(c, transactions, totalCount, page, pageSize)
 }
 
 // ListCreditPackages returns available credit packages for purchase
