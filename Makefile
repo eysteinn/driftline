@@ -36,6 +36,9 @@ logs: ## Show logs from all services
 logs-api: ## Show API server logs
 	docker-compose -f docker-compose.dev.yml logs -f api
 
+logs-data-service: ## Show data service logs
+	docker-compose -f docker-compose.dev.yml logs -f data-service
+
 logs-worker: ## Show drift worker logs
 	docker-compose -f docker-compose.dev.yml logs -f drift-worker
 
@@ -50,6 +53,9 @@ restart: ## Restart all services
 
 restart-api: ## Restart API server
 	docker-compose -f docker-compose.dev.yml restart api
+
+restart-data-service: ## Restart data service
+	docker-compose -f docker-compose.dev.yml restart data-service
 
 restart-worker: ## Restart drift worker
 	docker-compose -f docker-compose.dev.yml restart drift-worker
@@ -71,10 +77,15 @@ test-api: ## Run API tests
 test-worker: ## Run worker tests
 	cd services/drift-worker && pytest
 
+test-data-service: ## Run data service tests
+	cd services/data-service && pytest tests/
+
 lint: ## Run linters
 	@echo "Linting Go code..."
 	cd services/api && go vet ./...
-	cd services/data-service && go vet ./...
+	@echo "Linting Python code..."
+	cd services/data-service && python -m flake8 app/ --max-line-length=100 --ignore=E501,W503 || true
+	cd services/drift-worker && python -m flake8 . --max-line-length=100 --ignore=E501,W503 || true
 	@echo "Linting TypeScript code..."
 	cd frontend && npm run lint
 
@@ -101,10 +112,10 @@ install-deps: ## Install all dependencies
 	cd frontend && npm install
 	@echo "Installing Go dependencies..."
 	cd services/api && go mod download
-	cd services/data-service && go mod download
 	@echo "Installing Python dependencies..."
 	cd services/drift-worker && pip install -r requirements.txt
 	cd services/results-processor && pip install -r requirements.txt
+	cd services/data-service && pip install -r requirements.txt
 
 setup: install-deps ## Initial setup
 	@echo "Creating .env file..."
