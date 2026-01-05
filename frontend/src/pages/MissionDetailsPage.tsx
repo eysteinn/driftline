@@ -35,6 +35,26 @@ export default function MissionDetailsPage() {
     }
   }, [id, fetchMission])
 
+  // Automatic polling for non-terminal mission states
+  useEffect(() => {
+    if (!id || !currentMission) return
+
+    // Only poll if mission is not in a terminal state
+    const isTerminalState = currentMission.status === 'completed' || currentMission.status === 'failed'
+    
+    if (isTerminalState) return
+
+    // Set up polling interval (5 seconds)
+    const pollInterval = setInterval(() => {
+      fetchMission(id)
+    }, 5000)
+
+    // Cleanup interval on unmount or when dependencies change
+    return () => {
+      clearInterval(pollInterval)
+    }
+  }, [id, currentMission, fetchMission])
+
   const handleRefresh = async () => {
     if (id) {
       setRefreshing(true)
