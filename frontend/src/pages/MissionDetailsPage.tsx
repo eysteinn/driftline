@@ -53,7 +53,7 @@ export default function MissionDetailsPage() {
     return () => {
       clearInterval(pollInterval)
     }
-  }, [id, currentMission, fetchMission])
+  }, [id, currentMission?.status, fetchMission])
 
   const handleRefresh = async () => {
     if (id) {
