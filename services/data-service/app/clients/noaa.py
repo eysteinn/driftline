@@ -3,6 +3,7 @@ NOAA data clients for GFS (wind) and WaveWatch III (waves)
 """
 import logging
 import tempfile
+import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 import xarray as xr
@@ -40,15 +41,6 @@ class NOAAGFSClient:
             Path to downloaded NetCDF file or None if error
         """
         try:
-            # Create temporary file if output_path not provided
-            if not output_path:
-                temp_file = tempfile.NamedTemporaryFile(
-                    suffix='.nc',
-                    delete=False
-                )
-                output_path = temp_file.name
-                temp_file.close()
-            
             logger.info(f"Fetching wind data from NOAA GFS for bounds: "
                        f"lat=[{request.min_lat}, {request.max_lat}], "
                        f"lon=[{request.min_lon}, {request.max_lon}], "
@@ -56,55 +48,90 @@ class NOAAGFSClient:
             
             # Construct OPeNDAP URL
             # GFS data is organized by forecast cycle
-            # Use the most recent cycle relative to start_time
-            cycle_date = request.start_time.replace(hour=0, minute=0, second=0, microsecond=0)
+            from datetime import timezone
+            now = datetime.now(timezone.utc)
             
-            # Try current and previous day's cycles
-            for days_back in range(3):
-                try_date = cycle_date - timedelta(days=days_back)
+            # Search from request start time, or from now if request is in the future
+            search_start = request.start_time if request.start_time < now else now
+            
+            # Try cycles going backwards from search_start
+            for step in range(12):  # Try ~3 days of cycles
+                dt = search_start - timedelta(hours=6 * step)
+                cycle = (dt.hour // 6) * 6
+                date_str = dt.strftime('%Y%m%d')
                 
-                # GFS runs at 00, 06, 12, 18 UTC
-                for cycle_hour in ['00', '06', '12', '18']:
-                    try:
-                        # Construct URL for specific forecast
-                        # Format: gfs_0p25_YYYYMMDD/gfs_0p25_HHz
-                        date_str = try_date.strftime('%Y%m%d')
-                        url = f"{self.base_url}/{date_str}/gfs_0p25_{cycle_hour}z"
-                        
-                        logger.debug(f"Trying GFS URL: {url}")
-                        
-                        # Open dataset via OPeNDAP
-                        ds = xr.open_dataset(url, engine='pydap')
-                        
-                        # Select wind components (u and v at 10m)
-                        # Variable names may vary, try common ones
-                        wind_vars = []
-                        if 'ugrd10m' in ds.variables:
-                            wind_vars.append('ugrd10m')
-                        if 'vgrd10m' in ds.variables:
-                            wind_vars.append('vgrd10m')
-                        
-                        if not wind_vars:
-                            logger.warning(f"Wind variables not found in dataset")
-                            continue
-                        
-                        # Subset spatially and temporally
-                        ds_subset = ds[wind_vars].sel(
-                            lat=slice(request.min_lat, request.max_lat),
-                            lon=slice(request.min_lon, request.max_lon),
-                            time=slice(request.start_time, request.end_time)
-                        )
-                        
-                        # Save to NetCDF
-                        ds_subset.to_netcdf(output_path)
+                try:
+                    # Construct URL for specific forecast
+                    # Format: gfs{YYYYMMDD}/gfs_0p25_{HH}z
+                    url = f"{self.base_url}/gfs{date_str}/gfs_0p25_{cycle:02d}z"
+                    
+                    logger.debug(f"Trying GFS URL: {url}")
+                    
+                    # Open dataset via OPeNDAP
+                    ds = xr.open_dataset(url, engine='pydap')
+                    
+                    # Select wind components (u and v at 10m)
+                    # Variable names may vary, try common ones
+                    wind_vars = []
+                    if 'ugrd10m' in ds.variables:
+                        wind_vars.append('ugrd10m')
+                    if 'vgrd10m' in ds.variables:
+                        wind_vars.append('vgrd10m')
+                    
+                    if not wind_vars:
+                        logger.warning(f"Wind variables not found in dataset at {url}")
                         ds.close()
-                        
-                        logger.info(f"Successfully downloaded wind data to {output_path}")
-                        return output_path
-                        
-                    except Exception as e:
-                        logger.debug(f"Failed to fetch from {url}: {e}")
                         continue
+                    
+                    # Subset spatially and temporally
+                    # Convert timezone-aware datetimes to naive (xarray datasets use naive datetimes)
+                    start_time = request.start_time.replace(tzinfo=None) if request.start_time.tzinfo else request.start_time
+                    end_time = request.end_time.replace(tzinfo=None) if request.end_time.tzinfo else request.end_time
+                    
+                    # Convert longitude to 0-360 range (NOAA uses 0-360, not -180 to 180)
+                    lon_min = request.min_lon if request.min_lon >= 0 else request.min_lon + 360
+                    lon_max = request.max_lon if request.max_lon >= 0 else request.max_lon + 360
+                    
+                    ds_subset = ds[wind_vars].sel(
+                        lat=slice(request.min_lat, request.max_lat),
+                        lon=slice(lon_min, lon_max),
+                        time=slice(start_time, end_time)
+                    )
+                    
+                    # Check if we got any data
+                    if ds_subset['time'].size == 0:
+                        logger.debug(f"No data in requested time range at {url}")
+                        ds.close()
+                        continue
+                    
+                    # Extract data values to avoid OPeNDAP streaming issues
+                    # Create a new dataset with actual data values
+                    data_vars = {}
+                    for var in wind_vars:
+                        data_vars[var] = (['time', 'lat', 'lon'], ds_subset[var].values)
+                    
+                    output_ds = xr.Dataset(
+                        data_vars=data_vars,
+                        coords={
+                            'time': ds_subset['time'].values,
+                            'lat': ds_subset['lat'].values,
+                            'lon': ds_subset['lon'].values
+                        }
+                    )
+                    ds.close()
+                    
+                    # Create temporary file if output_path not provided (generate unique name)
+                    save_path = output_path if output_path else f"/tmp/noaa_wind_{uuid.uuid4().hex}.nc"
+                    
+                    # Save to NetCDF
+                    output_ds.to_netcdf(save_path)
+                    
+                    logger.info(f"Successfully downloaded wind data from {url} to {save_path}")
+                    return save_path
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to fetch from {url}: {e}")
+                    continue
             
             logger.error("Could not fetch wind data from any available GFS cycle")
             return None
@@ -149,15 +176,6 @@ class NOAAWaveWatchClient:
             Path to downloaded NetCDF file or None if error
         """
         try:
-            # Create temporary file if output_path not provided
-            if not output_path:
-                temp_file = tempfile.NamedTemporaryFile(
-                    suffix='.nc',
-                    delete=False
-                )
-                output_path = temp_file.name
-                temp_file.close()
-            
             logger.info(f"Fetching wave data from NOAA WaveWatch III for bounds: "
                        f"lat=[{request.min_lat}, {request.max_lat}], "
                        f"lon=[{request.min_lon}, {request.max_lon}], "
@@ -194,21 +212,47 @@ class NOAAWaveWatchClient:
                             continue
                         
                         # Subset spatially and temporally
+                        # Convert timezone-aware datetimes to naive (xarray datasets use naive datetimes)
+                        start_time = request.start_time.replace(tzinfo=None) if request.start_time.tzinfo else request.start_time
+                        end_time = request.end_time.replace(tzinfo=None) if request.end_time.tzinfo else request.end_time
+                        
+                        # Convert longitude to 0-360 range (NOAA uses 0-360, not -180 to 180)
+                        lon_min = request.min_lon if request.min_lon >= 0 else request.min_lon + 360
+                        lon_max = request.max_lon if request.max_lon >= 0 else request.max_lon + 360
+                        
                         ds_subset = ds[wave_vars].sel(
                             lat=slice(request.min_lat, request.max_lat),
-                            lon=slice(request.min_lon, request.max_lon),
-                            time=slice(request.start_time, request.end_time)
+                            lon=slice(lon_min, lon_max),
+                            time=slice(start_time, end_time)
                         )
                         
-                        # Save to NetCDF
-                        ds_subset.to_netcdf(output_path)
+                        # Extract data values to avoid OPeNDAP streaming issues
+                        # Create a new dataset with actual data values
+                        data_vars = {}
+                        for var in wave_vars:
+                            data_vars[var] = (['time', 'lat', 'lon'], ds_subset[var].values)
+                        
+                        output_ds = xr.Dataset(
+                            data_vars=data_vars,
+                            coords={
+                                'time': ds_subset['time'].values,
+                                'lat': ds_subset['lat'].values,
+                                'lon': ds_subset['lon'].values
+                            }
+                        )
                         ds.close()
                         
-                        logger.info(f"Successfully downloaded wave data to {output_path}")
-                        return output_path
+                        # Create temporary file if output_path not provided (generate unique name)
+                        save_path = output_path if output_path else f"/tmp/noaa_wave_{uuid.uuid4().hex}.nc"
+                        
+                        # Save to NetCDF
+                        output_ds.to_netcdf(save_path)
+                        
+                        logger.info(f"Successfully downloaded wave data to {save_path}")
+                        return save_path
                         
                     except Exception as e:
-                        logger.debug(f"Failed to fetch from {url}: {e}")
+                        logger.warning(f"Failed to fetch from {url}: {e}")
                         continue
             
             logger.error("Could not fetch wave data from any available WaveWatch cycle")

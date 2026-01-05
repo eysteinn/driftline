@@ -21,9 +21,10 @@ from psycopg2.extras import RealDictCursor
 import boto3
 from botocore.client import Config
 from botocore.exceptions import ClientError
+import numpy as np
+import requests
 from opendrift.readers import reader_netCDF_CF_generic
 from opendrift.models.leeway import Leeway
-import numpy as np
 
 # Import configuration
 try:
@@ -31,7 +32,8 @@ try:
         DEFAULT_NUM_PARTICLES, DEFAULT_DURATION_HOURS, DEFAULT_OBJECT_TYPE,
         DEFAULT_TIME_STEP, DEFAULT_OUTPUT_INTERVAL, DEFAULT_SEED_RADIUS,
         RESULTS_BUCKET, JOB_QUEUE, DENSITY_MAP_PIXEL_SIZE,
-        STATUS_PROCESSING, STATUS_COMPLETED, STATUS_FAILED
+        STATUS_PROCESSING, STATUS_COMPLETED, STATUS_FAILED,
+        DEFAULT_DATA_SERVICE_URL, DATA_SERVICE_TIMEOUT, SPATIAL_BUFFER
     )
 except ImportError:
     # Fallback to defaults if config not available
@@ -47,6 +49,9 @@ except ImportError:
     STATUS_PROCESSING = "processing"
     STATUS_COMPLETED = "completed"
     STATUS_FAILED = "failed"
+    DEFAULT_DATA_SERVICE_URL = "http://data-service:8000"
+    DATA_SERVICE_TIMEOUT = 120
+    SPATIAL_BUFFER = 2.0
 
 # Configure logging
 log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -74,6 +79,7 @@ class DriftWorker:
         self.max_concurrent_jobs = int(os.getenv('MAX_CONCURRENT_JOBS', '2'))
         self.queue_name = os.getenv('QUEUE_NAME', JOB_QUEUE)
         self.poll_interval = int(os.getenv('POLL_INTERVAL', '5'))
+        self.data_service_url = os.getenv('DATA_SERVICE_URL', DEFAULT_DATA_SERVICE_URL)
         
         # Validate required configuration
         self._validate_config()
@@ -86,6 +92,7 @@ class DriftWorker:
         self._init_connections()
         
         logger.info(f"Initialized DriftWorker with {self.max_concurrent_jobs} max concurrent jobs")
+        logger.info(f"Data Service URL: {self.data_service_url}")
     
     def _validate_config(self):
         """Validate required environment variables"""
@@ -183,24 +190,143 @@ class DriftWorker:
             # Don't re-raise - we don't want to fail the job if DB update fails
             # The job results will still be in S3
     
+    def _parse_mission_datetime(self, datetime_str: str) -> datetime:
+        """
+        Parse mission datetime string and return naive datetime for OpenDrift
+        
+        Args:
+            datetime_str: ISO format datetime string (may include 'Z' or timezone info)
+            
+        Returns:
+            Naive datetime object (no timezone info)
+        """
+        # Convert 'Z' to proper timezone format
+        parsed_str = datetime_str.replace('Z', '+00:00')
+        dt = datetime.fromisoformat(parsed_str)
+        
+        # OpenDrift expects naive datetimes, so remove timezone info
+        if dt.tzinfo is not None:
+            dt = dt.replace(tzinfo=None)
+        
+        return dt
+    
     def _download_forcing_data(self, mission_params: Dict[str, Any], 
                                temp_dir: str) -> Dict[str, str]:
-        """Download required forcing data from S3"""
-        logger.info("Downloading forcing data from S3...")
+        """Download required forcing data from data-service API"""
+        logger.info("Fetching forcing data from data-service...")
         
-        # For now, we'll work with simulated/default readers
-        # In production, this would download specific regional data
         forcing_files = {}
         
-        # Example: Download ocean current data
-        # bucket = 'driftline-data'
-        # key = f"ocean_currents/{region}/{date}.nc"
-        # local_path = os.path.join(temp_dir, 'currents.nc')
-        # self.s3_client.download_file(bucket, key, local_path)
-        # forcing_files['currents'] = local_path
+        # Extract mission parameters
+        lat = mission_params['latitude']
+        lon = mission_params['longitude']
+        start_time_str = mission_params['start_time']
+        duration_hours = mission_params.get('duration_hours', DEFAULT_DURATION_HOURS)
         
-        logger.info("Forcing data ready (using default readers for now)")
+        # Calculate spatial bounds with buffer
+        min_lat = lat - SPATIAL_BUFFER
+        max_lat = lat + SPATIAL_BUFFER
+        min_lon = lon - SPATIAL_BUFFER
+        max_lon = lon + SPATIAL_BUFFER
+        
+        # Calculate end time
+        start_time = self._parse_mission_datetime(start_time_str)
+        end_time = start_time + timedelta(hours=duration_hours)
+        
+        # Format times for API (add back timezone info for API calls)
+        start_time_iso = start_time.isoformat() + 'Z'
+        end_time_iso = end_time.isoformat() + 'Z'
+        
+        # Data types to fetch
+        data_types = [
+            ('ocean-currents', 'currents.nc'),
+            ('wind', 'wind.nc'),
+            ('waves', 'waves.nc')
+        ]
+        
+        for data_type, filename in data_types:
+            try:
+                logger.info(f"Fetching {data_type} data...")
+                
+                # Build request parameters
+                params = {
+                    'min_lat': min_lat,
+                    'max_lat': max_lat,
+                    'min_lon': min_lon,
+                    'max_lon': max_lon,
+                    'start_time': start_time_iso,
+                    'end_time': end_time_iso
+                }
+                
+                # Call data-service API
+                url = f"{self.data_service_url}/v1/data/{data_type}"
+                response = requests.get(url, params=params, timeout=DATA_SERVICE_TIMEOUT)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    file_path = data.get('file_path')
+                    
+                    if file_path:
+                        # Download the file from S3/MinIO
+                        local_path = os.path.join(temp_dir, filename)
+                        self._download_from_storage(file_path, local_path)
+                        forcing_files[data_type] = local_path
+                        logger.info(f"Downloaded {data_type} data to {local_path}")
+                    else:
+                        logger.warning(f"No file path returned for {data_type}")
+                else:
+                    logger.warning(f"Failed to fetch {data_type}: HTTP {response.status_code}")
+                    
+            except requests.exceptions.Timeout:
+                logger.warning(f"Timeout fetching {data_type} data from data-service")
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"Error fetching {data_type} data: {e}")
+            except Exception as e:
+                logger.warning(f"Unexpected error fetching {data_type}: {e}")
+        
+        if forcing_files:
+            logger.info(f"Successfully fetched {len(forcing_files)} forcing data files")
+        else:
+            logger.warning("No forcing data files obtained, will use fallback conditions")
+        
         return forcing_files
+    
+    def _download_from_storage(self, s3_path: str, local_path: str):
+        """
+        Download a file from S3/MinIO storage
+        
+        Args:
+            s3_path: S3 path in format 'bucket/path/to/file.nc' or 's3://bucket/path/to/file.nc'
+                     Must include both bucket name and file key/path
+            local_path: Local file path where the file will be saved
+        """
+        # Parse S3 path (format: bucket/path/to/file.nc or s3://bucket/path/to/file.nc)
+        if not s3_path:
+            raise ValueError("S3 path cannot be empty")
+        
+        # Remove s3:// prefix if present
+        s3_path = s3_path.replace('s3://', '')
+        
+        # Split on first slash to separate bucket from key
+        # We always expect both bucket and key since we're downloading files
+        parts = s3_path.split('/', 1)
+        
+        if len(parts) != 2:
+            raise ValueError(
+                f"Invalid S3 path format: '{s3_path}'. "
+                "Expected format: 'bucket/path/to/file' or 's3://bucket/path/to/file'"
+            )
+        
+        bucket = parts[0]
+        key = parts[1]
+        
+        if not bucket:
+            raise ValueError(f"Invalid S3 path: bucket cannot be empty in '{s3_path}'")
+        if not key:
+            raise ValueError(f"Invalid S3 path: key cannot be empty in '{s3_path}'")
+        
+        logger.debug(f"Downloading from S3: bucket={bucket}, key={key}")
+        self.s3_client.download_file(bucket, key, local_path)
     
     def _upload_results(self, mission_id: str, result_file: str) -> str:
         """Upload simulation results to S3"""
@@ -254,11 +380,8 @@ class DriftWorker:
         # Extract mission parameters with defaults
         lat = mission_params['latitude']
         lon = mission_params['longitude']
-        # Parse datetime and remove timezone info (OpenDrift expects naive datetimes)
-        start_time_str = mission_params['start_time'].replace('Z', '+00:00')
-        start_time = datetime.fromisoformat(start_time_str)
-        if start_time.tzinfo is not None:
-            start_time = start_time.replace(tzinfo=None)
+        # Parse datetime (OpenDrift expects naive datetimes)
+        start_time = self._parse_mission_datetime(mission_params['start_time'])
         duration_hours = mission_params.get('duration_hours', DEFAULT_DURATION_HOURS)
         num_particles = mission_params.get('num_particles', DEFAULT_NUM_PARTICLES)
         object_type = mission_params.get('object_type', DEFAULT_OBJECT_TYPE)
@@ -266,13 +389,28 @@ class DriftWorker:
         # Initialize Leeway model
         o = Leeway(loglevel=logging.WARNING)
         
-        # Set constant environmental conditions (fallback mode for testing)
-        # In production, this would use downloaded forcing data from data-service
-        logger.info("Using constant environmental conditions (testing mode)")
-        o.set_config('environment:fallback:x_wind', 3.0)  # 3 m/s eastward wind
-        o.set_config('environment:fallback:y_wind', 2.0)  # 2 m/s northward wind
-        o.set_config('environment:fallback:x_sea_water_velocity', 0.2)  # 0.2 m/s eastward current
-        o.set_config('environment:fallback:y_sea_water_velocity', 0.1)  # 0.1 m/s northward current
+        # Add readers for forcing data if available
+        readers_added = False
+        if forcing_files:
+            logger.info("Adding environmental data readers from data-service...")
+            
+            for data_type, file_path in forcing_files.items():
+                try:
+                    logger.info(f"Adding reader for {data_type}: {file_path}")
+                    reader = reader_netCDF_CF_generic.Reader(file_path)
+                    o.add_reader(reader)
+                    readers_added = True
+                    logger.info(f"Successfully added {data_type} reader")
+                except Exception as e:
+                    logger.warning(f"Failed to add reader for {data_type}: {e}")
+        
+        # Use fallback conditions if no readers were successfully added
+        if not readers_added:
+            logger.info("Using constant environmental conditions (fallback mode)")
+            o.set_config('environment:fallback:x_wind', 3.0)  # 3 m/s eastward wind
+            o.set_config('environment:fallback:y_wind', 2.0)  # 2 m/s northward wind
+            o.set_config('environment:fallback:x_sea_water_velocity', 0.2)  # 0.2 m/s eastward current
+            o.set_config('environment:fallback:y_sea_water_velocity', 0.1)  # 0.1 m/s northward current
         
         # Seed particles at last known position
         logger.info(f"Seeding {num_particles} particles at ({lat}, {lon})")

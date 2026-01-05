@@ -68,3 +68,11 @@ OPENDRIFT_LOG_LEVEL = "WARNING"
 DATABASE_TIMEOUT = 30  # seconds
 REDIS_TIMEOUT = 5  # seconds
 S3_TIMEOUT = 60  # seconds
+DATA_SERVICE_TIMEOUT = 120  # seconds
+
+# Data service configuration
+DEFAULT_DATA_SERVICE_URL = "http://data-service:8000"
+
+# Spatial buffer for environmental data requests (degrees)
+# Add buffer around mission area to ensure adequate coverage
+SPATIAL_BUFFER = 2.0  # degrees
