@@ -35,7 +35,7 @@ class Config:
     # Copernicus Marine Service - Global Ocean Physics Analysis and Forecast
     CMEMS_OCEAN_CURRENTS_DATASET: str = os.getenv(
         'CMEMS_OCEAN_CURRENTS_DATASET',
-        'cmems_mod_glo_phy_anfc_0.083deg_P1D-m'
+        'cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m'
     )
     
     # NOAA GFS - Global Forecast System
