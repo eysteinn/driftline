@@ -150,7 +150,7 @@ To apply the credit system to an existing database:
 
 ```bash
 # Apply the migration
-psql -U driftline_user -d driftline < sql/migrations/002_credit_system.sql
+psql -U driftline_user -d driftline < sql/migrations/03_credit_system.sql
 ```
 
 The migration will:
