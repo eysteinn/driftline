@@ -5,7 +5,7 @@ import logging
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from app.config import config
 
 logger = logging.getLogger(__name__)
@@ -162,6 +162,8 @@ class DatabaseService:
             List of dataset records
         """
         try:
+            # Build WHERE clause from hardcoded conditions only
+            # All user input is passed as parameterized values
             conditions = []
             params = []
             
@@ -181,6 +183,7 @@ class DatabaseService:
                 conditions.append("is_forecast = %s")
                 params.append(is_forecast)
             
+            # Safe to use f-string here as where_clause only contains hardcoded SQL fragments
             where_clause = " AND ".join(conditions) if conditions else "TRUE"
             
             with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -196,7 +199,7 @@ class DatabaseService:
             logger.error(f"Failed to get available datasets: {e}")
             return []
     
-    def cleanup_old_datasets(self, max_age_days: int) -> int:
+    def cleanup_old_datasets(self, max_age_days: int) -> List[tuple]:
         """
         Clean up datasets older than max_age_days
         
@@ -204,10 +207,10 @@ class DatabaseService:
             max_age_days: Maximum age in days
             
         Returns:
-            Number of datasets removed
+            List of tuples containing (id, file_path) for deleted datasets
         """
         try:
-            cutoff_date = datetime.utcnow() - timedelta(days=max_age_days)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=max_age_days)
             
             with self.conn.cursor() as cur:
                 cur.execute("""
