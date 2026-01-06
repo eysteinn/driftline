@@ -23,6 +23,29 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Credit cost constants
+const (
+	BaseMissionCost        = 10   // Base cost for any mission
+	CostPerDay             = 1    // Cost per 24 hours of forecast
+	CostPer1000Particles   = 1    // Cost per 1000 particles beyond base
+	BaseParticleCount      = 1000 // Base particle count included in base cost
+)
+
+// CalculateMissionCost calculates the credit cost for a mission based on its parameters
+func CalculateMissionCost(forecastHours int, ensembleSize int) int {
+	cost := BaseMissionCost
+	
+	// Add cost for forecast duration (round up to full days)
+	cost += (forecastHours + 23) / 24
+	
+	// Add cost for particles beyond base count
+	if ensembleSize > BaseParticleCount {
+		cost += (ensembleSize - BaseParticleCount) / 1000
+	}
+	
+	return cost
+}
+
 // CreateMission handles creating a new drift forecast mission
 func CreateMission(c *gin.Context) {
 	var req models.CreateMissionRequest
@@ -43,26 +66,52 @@ func CreateMission(c *gin.Context) {
 		req.EnsembleSize = 1000
 	}
 
+	// Calculate credit cost based on mission parameters
+	creditsCost := CalculateMissionCost(req.ForecastHours, req.EnsembleSize)
+
+	// Check if user has sufficient credits
+	var currentBalance int
+	err := database.DB.QueryRow(
+		`SELECT balance FROM user_credits WHERE user_id = $1`,
+		userID,
+	).Scan(&currentBalance)
+
+	if err == sql.ErrNoRows {
+		utils.ErrorResponse(c, http.StatusPaymentRequired, 
+			fmt.Sprintf("Insufficient credits. This mission requires %d credits. Please purchase credits to continue.", creditsCost))
+		return
+	} else if err != nil {
+		log.Printf("Failed to check credit balance: %v", err)
+		utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to check credit balance")
+		return
+	}
+
+	if currentBalance < creditsCost {
+		utils.ErrorResponse(c, http.StatusPaymentRequired,
+			fmt.Sprintf("Insufficient credits. You have %d credits, but this mission requires %d credits. Please purchase more credits.", currentBalance, creditsCost))
+		return
+	}
+
 	// Insert mission into database
 	var mission models.Mission
-	err := database.DB.QueryRow(
+	err = database.DB.QueryRow(
 		`INSERT INTO missions (
 			user_id, name, description, last_known_lat, last_known_lon, 
 			last_known_time, object_type, uncertainty_radius_m, 
-			forecast_hours, ensemble_size, status, created_at, updated_at
+			forecast_hours, ensemble_size, credits_cost, status, created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id, user_id, name, description, last_known_lat, last_known_lon,
 		          last_known_time, object_type, uncertainty_radius_m, forecast_hours,
-		          ensemble_size, config, status, job_id, error_message,
+		          ensemble_size, credits_cost, config, status, job_id, error_message,
 		          created_at, updated_at, completed_at`,
 		userID, req.Name, req.Description, req.LastKnownLat, req.LastKnownLon,
 		req.LastKnownTime, req.ObjectType, req.UncertaintyRadiusM,
-		req.ForecastHours, req.EnsembleSize, "created", time.Now(), time.Now(),
+		req.ForecastHours, req.EnsembleSize, creditsCost, "created", time.Now(), time.Now(),
 	).Scan(
 		&mission.ID, &mission.UserID, &mission.Name, &mission.Description, &mission.LastKnownLat, &mission.LastKnownLon,
 		&mission.LastKnownTime, &mission.ObjectType, &mission.UncertaintyRadiusM, &mission.ForecastHours,
-		&mission.EnsembleSize, &mission.Config, &mission.Status, &mission.JobID, &mission.ErrorMessage,
+		&mission.EnsembleSize, &mission.CreditsCost, &mission.Config, &mission.Status, &mission.JobID, &mission.ErrorMessage,
 		&mission.CreatedAt, &mission.UpdatedAt, &mission.CompletedAt,
 	)
 
@@ -70,6 +119,23 @@ func CreateMission(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to create mission")
 		return
 	}
+
+	// Deduct credits for the mission
+	missionIDStr := mission.ID
+	description := fmt.Sprintf("Mission: %s (%d forecast hours, %d particles)", mission.Name, req.ForecastHours, req.EnsembleSize)
+	newBalance, err := DeductCredits(userID, creditsCost, description, &missionIDStr)
+	if err != nil {
+		// Failed to deduct credits - delete the mission and return error
+		log.Printf("Failed to deduct credits for mission %s: %v", mission.ID, err)
+		_, deleteErr := database.DB.Exec(`DELETE FROM missions WHERE id = $1`, mission.ID)
+		if deleteErr != nil {
+			log.Printf("Failed to cleanup mission %s after credit deduction failure: %v", mission.ID, deleteErr)
+		}
+		utils.ErrorResponse(c, http.StatusPaymentRequired, fmt.Sprintf("Failed to deduct credits: %v", err))
+		return
+	}
+
+	log.Printf("Deducted %d credits for mission %s. New balance: %d", creditsCost, mission.ID, newBalance)
 
 	// Enqueue job to Redis for processing
 	objectTypeInt := 1 // Default to Person-in-water
@@ -124,7 +190,7 @@ func ListMissions(c *gin.Context) {
 	rows, err := database.DB.Query(
 		`SELECT id, user_id, name, description, last_known_lat, last_known_lon,
 		        last_known_time, object_type, uncertainty_radius_m, forecast_hours,
-		        ensemble_size, config, status, job_id, error_message,
+		        ensemble_size, credits_cost, config, status, job_id, error_message,
 		        created_at, updated_at, completed_at
 		 FROM missions
 		 WHERE user_id = $1
@@ -144,7 +210,7 @@ func ListMissions(c *gin.Context) {
 		err := rows.Scan(
 			&m.ID, &m.UserID, &m.Name, &m.Description, &m.LastKnownLat, &m.LastKnownLon,
 			&m.LastKnownTime, &m.ObjectType, &m.UncertaintyRadiusM, &m.ForecastHours,
-			&m.EnsembleSize, &m.Config, &m.Status, &m.JobID, &m.ErrorMessage,
+			&m.EnsembleSize, &m.CreditsCost, &m.Config, &m.Status, &m.JobID, &m.ErrorMessage,
 			&m.CreatedAt, &m.UpdatedAt, &m.CompletedAt,
 		)
 		if err != nil {
@@ -172,7 +238,7 @@ func GetMission(c *gin.Context) {
 	err := database.DB.QueryRow(
 		`SELECT id, user_id, name, description, last_known_lat, last_known_lon,
 		        last_known_time, object_type, uncertainty_radius_m, forecast_hours,
-		        ensemble_size, config, status, job_id, error_message,
+		        ensemble_size, credits_cost, config, status, job_id, error_message,
 		        created_at, updated_at, completed_at
 		 FROM missions
 		 WHERE id = $1 AND user_id = $2`,
@@ -180,7 +246,7 @@ func GetMission(c *gin.Context) {
 	).Scan(
 		&m.ID, &m.UserID, &m.Name, &m.Description, &m.LastKnownLat, &m.LastKnownLon,
 		&m.LastKnownTime, &m.ObjectType, &m.UncertaintyRadiusM, &m.ForecastHours,
-		&m.EnsembleSize, &m.Config, &m.Status, &m.JobID, &m.ErrorMessage,
+		&m.EnsembleSize, &m.CreditsCost, &m.Config, &m.Status, &m.JobID, &m.ErrorMessage,
 		&m.CreatedAt, &m.UpdatedAt, &m.CompletedAt,
 	)
 

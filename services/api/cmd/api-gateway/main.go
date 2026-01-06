@@ -114,6 +114,17 @@ func main() {
 			missions.GET("/:id/results", handlers.GetMissionResults)
 			missions.GET("/:id/results/download", handlers.DownloadMissionResults)
 		}
+
+		// Protected credit routes
+		credits := v1.Group("/credits")
+		credits.Use(middleware.AuthMiddleware())
+		{
+			credits.GET("/balance", handlers.GetCreditBalance)
+			credits.GET("/transactions", handlers.GetCreditTransactions)
+			credits.GET("/packages", handlers.ListCreditPackages)
+			credits.POST("/purchase", handlers.PurchaseCredits)
+			credits.POST("/add", handlers.AddCredits)
+		}
 	}
 
 	// Start server

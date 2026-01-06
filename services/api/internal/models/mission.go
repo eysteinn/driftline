@@ -17,6 +17,7 @@ type Mission struct {
 	UncertaintyRadiusM *float64   `json:"uncertaintyRadiusM" db:"uncertainty_radius_m"`
 	ForecastHours      int        `json:"forecastHours" db:"forecast_hours"`
 	EnsembleSize       int        `json:"ensembleSize" db:"ensemble_size"`
+	CreditsCost        int        `json:"creditsCost" db:"credits_cost"`
 	Config             *string    `json:"config" db:"config"`
 	Status             string     `json:"status" db:"status"`
 	JobID              *string    `json:"jobId" db:"job_id"`
