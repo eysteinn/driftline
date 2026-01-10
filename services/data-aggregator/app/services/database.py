@@ -39,16 +39,15 @@ class DatabaseService:
                         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                         data_type VARCHAR(50) NOT NULL,
                         source VARCHAR(50) NOT NULL,
+                        analysis_date TIMESTAMP NOT NULL,
+                        cycle VARCHAR(10),
                         forecast_date TIMESTAMP NOT NULL,
-                        forecast_cycle VARCHAR(10),
-                        valid_time_start TIMESTAMP NOT NULL,
-                        valid_time_end TIMESTAMP NOT NULL,
                         file_path VARCHAR(500) NOT NULL,
                         file_size_bytes BIGINT,
                         is_forecast BOOLEAN DEFAULT FALSE,
                         created_at TIMESTAMP DEFAULT NOW(),
                         last_accessed_at TIMESTAMP,
-                        UNIQUE(data_type, source, forecast_date, forecast_cycle, valid_time_start)
+                        UNIQUE(data_type, source, analysis_date, cycle, forecast_date)
                     )
                 """)
                 
@@ -58,12 +57,12 @@ class DatabaseService:
                     ON aggregator_datasets(data_type)
                 """)
                 cur.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_datasets_forecast_date 
-                    ON aggregator_datasets(forecast_date DESC)
+                    CREATE INDEX IF NOT EXISTS idx_datasets_analysis_date 
+                    ON aggregator_datasets(analysis_date DESC)
                 """)
                 cur.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_datasets_valid_time 
-                    ON aggregator_datasets(valid_time_start, valid_time_end)
+                    CREATE INDEX IF NOT EXISTS idx_datasets_forecast_date 
+                    ON aggregator_datasets(forecast_date DESC)
                 """)
                 cur.execute("""
                     CREATE INDEX IF NOT EXISTS idx_datasets_created 
@@ -95,10 +94,9 @@ class DatabaseService:
         self,
         data_type: str,
         source: str,
+        analysis_date: datetime,
+        cycle: str,
         forecast_date: datetime,
-        forecast_cycle: str,
-        valid_time_start: datetime,
-        valid_time_end: datetime,
         file_path: str,
         file_size_bytes: int,
         is_forecast: bool = False
@@ -113,19 +111,19 @@ class DatabaseService:
             with self.conn.cursor() as cur:
                 cur.execute("""
                     INSERT INTO aggregator_datasets 
-                    (data_type, source, forecast_date, forecast_cycle, 
-                     valid_time_start, valid_time_end, file_path, 
+                    (data_type, source, analysis_date, cycle, 
+                     forecast_date, file_path, 
                      file_size_bytes, is_forecast)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (data_type, source, forecast_date, forecast_cycle, valid_time_start)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (data_type, source, analysis_date, cycle, forecast_date)
                     DO UPDATE SET 
                         file_path = EXCLUDED.file_path,
                         file_size_bytes = EXCLUDED.file_size_bytes,
                         created_at = NOW()
                     RETURNING id
                 """, (
-                    data_type, source, forecast_date, forecast_cycle,
-                    valid_time_start, valid_time_end, file_path,
+                    data_type, source, analysis_date, cycle,
+                    forecast_date, file_path,
                     file_size_bytes, is_forecast
                 ))
                 

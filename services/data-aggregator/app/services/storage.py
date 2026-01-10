@@ -54,7 +54,27 @@ class StorageService:
             else:
                 logger.error(f"Error checking bucket: {e}")
                 raise
-    
+
+    def file_exists(self, s3_key: str) -> bool:
+        """
+        Check if a file exists in S3
+        
+        Args:
+            s3_key: S3 object key
+        Returns:
+            True if exists, False otherwise
+        """
+        try:
+            self.client.head_object(Bucket=self.bucket, Key=s3_key)
+            return True
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == '404':
+                return False
+            else:
+                logger.error(f"Error checking if file exists {s3_key}: {e}")
+                raise
+        
     def upload_file(self, local_path: str, s3_key: str) -> bool:
         """
         Upload a file to S3
@@ -108,22 +128,6 @@ class StorageService:
         except Exception as e:
             logger.error(f"Failed to get file size: {e}")
             return None
-    
-    def file_exists(self, s3_key: str) -> bool:
-        """
-        Check if a file exists in S3
-        
-        Args:
-            s3_key: S3 object key
-            
-        Returns:
-            True if exists, False otherwise
-        """
-        try:
-            self.client.head_object(Bucket=self.bucket, Key=s3_key)
-            return True
-        except ClientError:
-            return False
     
     def is_available(self) -> bool:
         """Check if storage service is available"""

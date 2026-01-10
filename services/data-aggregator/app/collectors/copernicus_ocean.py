@@ -36,13 +36,14 @@ class CopernicusOceanCollector(BaseCollector):
     def is_available(self) -> bool:
         """Check if collector is properly configured"""
         return bool(self.username and self.password)
+    def get_filename(self, date:datetime) -> str:
+        """Generate filename for a given date"""
+        date_str = date.strftime("%Y%m%dT%H")
+        return f"cmems_currents_{date_str}.nc"
     
     def download_ocean_currents(
         self,
-        start_date: datetime,
-        end_date: datetime,
-        min_depth: float = 0.5,
-        max_depth: float = 0.5
+        date: datetime,
     ) -> Optional[Path]:
         """
         Download ocean currents data from Copernicus
@@ -60,43 +61,47 @@ class CopernicusOceanCollector(BaseCollector):
             logger.error("Copernicus collector not available - missing credentials")
             return None
         
+        
+        
+
         try:
             import copernicusmarine as cm
+            date_str = date.strftime("%Y%m%dT%H")
+            filename = "cmems_currents_"+date_str+".nc"
+
+            s3_key = self.get_s3_key(date=date, filename=filename)
+            if self.storage.file_exists(s3_key):
+                logger.info(f"Data for {date.date()} already exists in storage: {s3_key}")
+                return None  # Already exists
+            
             
             # Create output file
-            date_str = start_date.strftime("%Y%m%d")
-            out_file = self.temp_dir / f"cmems_currents_{date_str}.nc"
+            out_file = self.temp_dir / filename
             
             if out_file.exists():
                 logger.info(f"File already exists: {out_file}")
                 return out_file
             
             logger.info(
-                f"Downloading ocean currents from {start_date} to {end_date} "
-                f"at depth {min_depth}-{max_depth}m"
+                f"Downloading ocean currents data for {date.date()} to {out_file}"
             )
             
-            # Use copernicusmarine subset to download global data
-            # Note: We download global data as subsetting will be done at query time
             cm.subset(
-                username=self.username,
-                password=self.password,
-                dataset_id=self.dataset_id,
+                username = self.username,
+                password = self.password,
+                dataset_id="cmems_mod_glo_phy_anfc_merged-uv_PT1H-i",
+
                 variables=[
-                    "uo",  # zonal (eastward) current
-                    "vo"   # meridional (northward) current
+                    "utotal",
+                    "vtotal"
                 ],
-                # Time range (ISO 8601)
-                start_datetime=start_date.strftime("%Y-%m-%dT%H:%M:%S"),
-                end_datetime=end_date.strftime("%Y-%m-%dT%H:%M:%S"),
-                # Depth (surface only)
-                minimum_depth=min_depth,
-                maximum_depth=max_depth,
-                # Output
-                output_filename=str(out_file),
-                output_directory=str(self.temp_dir),
-                force_download=True
+
+                start_datetime=date,
+                end_datetime=date,
+                output_filename=filename,
+                output_directory=self.temp_dir,
             )
+
             
             logger.info(f"Successfully downloaded ocean currents to {out_file}")
             return out_file
@@ -132,35 +137,43 @@ class CopernicusOceanCollector(BaseCollector):
             return collected
         
         try:
-            # Collect data for the specified day
-            target_date = datetime.now(timezone.utc) - timedelta(days=days_back)
-            start_date = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
-            end_date = start_date + timedelta(days=1)
+            # Calculate start time (days_back ago at midnight)
+            now = datetime.now(timezone.utc)
+            start_time = now - timedelta(days=days_back)
+            start_time = start_time.replace(hour=0, minute=0, second=0, microsecond=0)
             
-            logger.info(f"Downloading historical ocean currents for {start_date.date()}")
+            # Calculate total hours to collect
+            total_hours =  24
             
-            file_path = self.download_ocean_currents(
-                start_date=start_date,
-                end_date=end_date
-            )
+            logger.info(f"Collecting hourly data from {start_time} for {total_hours} hours")
             
-            if file_path:
-                # Copernicus data typically has 6-hour intervals
-                # Record the dataset with the full day coverage
-                success = self._record_dataset(
-                    forecast_date=start_date,
-                    forecast_cycle="00",
-                    valid_time_start=start_date,
-                    valid_time_end=end_date,
-                    local_file_path=str(file_path),
-                    is_forecast=False
-                )
+            # Iterate through each hour
+            for hour_offset in range(total_hours):
+                current_time = start_time + timedelta(hours=hour_offset)
                 
-                if success:
-                    collected += 1
+                logger.info(f"Downloading ocean currents for {current_time}")
+                
+                file_path = self.download_ocean_currents(date=current_time)
+                
+                if file_path:
+                    # Record the dataset for this hour
+                    cycle = f"{current_time.hour:02d}"
+                    success = self._record_dataset(
+                        analysis_date=current_time,
+                        cycle=cycle,
+                        forecast_date=current_time,
+                        local_file_path=str(file_path),
+                        is_forecast=False
+                    )
+                    
+                    if success:
+                        collected += 1
+                        logger.info(f"Successfully collected hour {hour_offset+1}/{total_hours}")
+                else:
+                    logger.warning(f"Failed to download data for {current_time}")
             
             self.db.complete_collection(collection_id, collected)
-            logger.info(f"Historical collection completed: {collected} datasets")
+            logger.info(f"Historical collection completed: {collected}/{total_hours} datasets")
             return collected
             
         except Exception as e:
@@ -192,35 +205,38 @@ class CopernicusOceanCollector(BaseCollector):
         try:
             # Get current time
             now = datetime.now(timezone.utc)
-            start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            start_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
             
-            # Calculate end date based on forecast hours
-            forecast_days = (forecast_hours // 24) + 1
-            end_date = start_date + timedelta(days=forecast_days)
+            # Calculate total forecast hours
+            logger.info(f"Collecting hourly forecast data for {forecast_hours} hours from {start_time}")
             
-            logger.info(f"Downloading forecast ocean currents from {start_date} to {end_date}")
-            
-            file_path = self.download_ocean_currents(
-                start_date=start_date,
-                end_date=end_date
-            )
-            
-            if file_path:
-                # Record the forecast dataset
-                success = self._record_dataset(
-                    forecast_date=now,
-                    forecast_cycle="00",
-                    valid_time_start=start_date,
-                    valid_time_end=end_date,
-                    local_file_path=str(file_path),
-                    is_forecast=True
-                )
+            # Iterate through each forecast hour
+            for hour_offset in range(forecast_hours):
+                forecast_time = start_time + timedelta(hours=hour_offset)
                 
-                if success:
-                    collected += 1
+                logger.info(f"Downloading forecast ocean currents for {forecast_time}")
+                
+                file_path = self.download_ocean_currents(date=forecast_time)
+                
+                if file_path:
+                    # Record the forecast dataset
+                    cycle = f"{forecast_time.hour:02d}"
+                    success = self._record_dataset(
+                        analysis_date=now,
+                        cycle=cycle,
+                        forecast_date=forecast_time,
+                        local_file_path=str(file_path),
+                        is_forecast=True
+                    )
+                    
+                    if success:
+                        collected += 1
+                        logger.info(f"Successfully collected forecast hour {hour_offset+1}/{forecast_hours}")
+                else:
+                    logger.warning(f"Failed to download forecast data for {forecast_time}")
             
             self.db.complete_collection(collection_id, collected)
-            logger.info(f"Forecast collection completed: {collected} datasets")
+            logger.info(f"Forecast collection completed: {collected}/{forecast_hours} datasets")
             return collected
             
         except Exception as e:

@@ -66,12 +66,32 @@ class BaseCollector(ABC):
         """
         pass
     
+
+    def get_s3_key(
+        self,
+        date: datetime,
+        filename: str
+    ) -> str:
+        """
+        Generate S3 key for a dataset
+        
+        Args:
+            date: Date of the  run
+            cycle:  cycle (e.g., '00', '06', '12', '18')
+            filename: Name of the file
+        Returns:
+            S3 object key as a string
+        """
+        date_path = date.strftime("%Y/%m/%d/%H")  # Need hours in filename
+        s3_key = f"{self.data_type}/{date_path}/{filename}"
+        return s3_key
+
+
     def _record_dataset(
         self,
+        analysis_date: datetime,
+        cycle: str,
         forecast_date: datetime,
-        forecast_cycle: str,
-        valid_time_start: datetime,
-        valid_time_end: datetime,
         local_file_path: str,
         is_forecast: bool = False
     ) -> bool:
@@ -79,10 +99,9 @@ class BaseCollector(ABC):
         Record a dataset in database and upload to storage
         
         Args:
-            forecast_date: Date of the forecast run
-            forecast_cycle: Forecast cycle (e.g., '00', '06', '12', '18')
-            valid_time_start: Start of valid time range
-            valid_time_end: End of valid time range
+            analysis_date: Date of the analysis run
+            cycle: Forecast cycle (e.g., '00', '06', '12', '18')
+            valid_date: Valid date of the data
             local_file_path: Path to local file
             is_forecast: Whether this is forecast data
             
@@ -91,9 +110,13 @@ class BaseCollector(ABC):
         """
         try:
             # Generate S3 key
-            date_path = forecast_date.strftime("%Y/%m/%d")
             filename = local_file_path.split('/')[-1]
-            s3_key = f"{self.data_type}/{date_path}/{forecast_cycle}/{filename}"
+            
+            #s3_key = f"{self.data_type}/{date_path}/{forecast_cycle}/{filename}"
+            s3_key = self.get_s3_key(
+                date=analysis_date,
+                filename=filename
+            )
             
             # Check if file already exists in storage
             if self.storage.file_exists(s3_key):
@@ -113,10 +136,9 @@ class BaseCollector(ABC):
             dataset_id = self.db.record_dataset(
                 data_type=self.data_type,
                 source=self.source,
+                analysis_date=analysis_date,
+                cycle=cycle,
                 forecast_date=forecast_date,
-                forecast_cycle=forecast_cycle,
-                valid_time_start=valid_time_start,
-                valid_time_end=valid_time_end,
                 file_path=s3_key,
                 file_size_bytes=file_size or 0,
                 is_forecast=is_forecast

@@ -23,14 +23,19 @@ class NOAAWindCollector(BaseCollector):
     def __init__(self, db_service, storage_service):
         super().__init__(db_service, storage_service)
         self.data_type = "wind"
-        self.source = "noaa_gfs"
+        self.source = "noaa_atmos"
         self.base_url = config.NOAA_GFS_BASE_URL
         self.temp_dir = Path("/tmp/gfs_wind_data")
         self.temp_dir.mkdir(parents=True, exist_ok=True)
     
-    def gfs_urls(self, yyyymmdd: str, cycle: str, fhr: int) -> Tuple[str, str]:
+
+    def get_filename(self, datatype: str, yyyymmdd: str, cycle: str, fhr: int) -> str:
+        return f"{datatype}.t{cycle}z.pgrb2.0p25.f{fhr:03d}.wind10m.grib2"
+    
+
+    def get_urls(self, datatype: str, yyyymmdd: str, cycle: str, fhr: int) -> Tuple[str, str]:
         """Generate GFS GRIB and index URLs"""
-        key = f"gfs.{yyyymmdd}/{cycle}/atmos/gfs.t{cycle}z.pgrb2.0p25.f{fhr:03d}"
+        key = f"{datatype}.{yyyymmdd}/{cycle}/atmos/{datatype}.t{cycle}z.pgrb2.0p25.f{fhr:03d}"
         grib_url = f"{self.base_url}/{key}"
         idx_url = f"{grib_url}.idx"
         return grib_url, idx_url
@@ -81,7 +86,7 @@ class NOAAWindCollector(BaseCollector):
                 # Check all required forecast hours for this run
                 ok = True
                 for fhr in forecast_hours:
-                    _, idx_url = self.gfs_urls(yyyymmdd, cyc, fhr=fhr)
+                    _, idx_url = self.get_urls("gfs", yyyymmdd, cyc, fhr=fhr)
                     if not self.http_exists(idx_url):
                         ok = False
                         break
@@ -174,17 +179,24 @@ class NOAAWindCollector(BaseCollector):
     def download_wind10m_subset(
         self,
         yyyymmdd: str,
+        datatype: str,
         cycle: str,
         fhr: int,
         skip_if_exists: bool = True,
         throttle_seconds: float = 0.0,
     ) -> Optional[Path]:
         """Download wind 10m subset for a specific forecast hour"""
-        grib_url, idx_url = self.gfs_urls(yyyymmdd, cycle, fhr)
+
+        if datatype not in ("gfs", "gdas"):
+            logger.error(f"Invalid datatype: {datatype}")
+            return None
+        
+        grib_url, idx_url = self.get_urls(datatype, yyyymmdd, cycle, fhr)
+        filename = self.get_filename(datatype, yyyymmdd, cycle, fhr)
         out_file = (
             self.temp_dir
             / f"{yyyymmdd}_{cycle}Z"
-            / f"gfs.t{cycle}z.pgrb2.0p25.f{fhr:03d}.wind10m.grib2"
+            / filename
         )
         
         if skip_if_exists and out_file.exists() and out_file.stat().st_size > 0:
@@ -234,37 +246,46 @@ class NOAAWindCollector(BaseCollector):
             # Collect data from specified days back
             target_date = datetime.now(timezone.utc) - timedelta(days=days_back)
             yyyymmdd = target_date.strftime("%Y%m%d")
-            cycle = "00"  # Use 00Z cycle for historical data
+            
             
             # Download f000 (analysis time)
             fhr = 0
-            logger.info(f"Downloading historical data for {yyyymmdd} {cycle}Z f{fhr:03d}")
-            
-            file_path = self.download_wind10m_subset(
-                yyyymmdd=yyyymmdd,
-                cycle=cycle,
-                fhr=fhr,
-                skip_if_exists=True
-            )
-            
-            if file_path:
-                # Record this dataset
-                forecast_date = datetime.strptime(f"{yyyymmdd}{cycle}", "%Y%m%d%H")
-                forecast_date = forecast_date.replace(tzinfo=timezone.utc)
-                valid_time = forecast_date + timedelta(hours=fhr)
+            datatype = "gdas"
+            for cycle in TRY_CYCLES_NEWEST_FIRST:
+                filename = self.get_filename(datatype, yyyymmdd, cycle, fhr)
+                target_date = target_date.replace(hour=int(cycle), minute=0, second=0, microsecond=0)
+
+                s3key = self.get_s3_key(target_date, filename)  # just to log the key format
+                if self.storage.file_exists(s3key):
+                    logger.info(f"Historical data already collected for {yyyymmdd} {cycle}Z f{fhr:03d}")
+                    continue
+                logger.info(f"Downloading historical data for {yyyymmdd} {cycle}Z f{fhr:03d}")
                 
-                success = self._record_dataset(
-                    forecast_date=forecast_date,
-                    forecast_cycle=cycle,
-                    valid_time_start=valid_time,
-                    valid_time_end=valid_time,
-                    local_file_path=str(file_path),
-                    is_forecast=False
+                file_path = self.download_wind10m_subset(
+                    yyyymmdd=yyyymmdd,
+                    datatype=datatype,
+                    cycle=cycle,
+                    fhr=fhr,
+                    skip_if_exists=True
                 )
                 
-                if success:
-                    collected += 1
-            
+                if file_path:
+                    # Record this dataset
+                    analysis_date = datetime.strptime(f"{yyyymmdd}{cycle}", "%Y%m%d%H")
+                    analysis_date = analysis_date.replace(tzinfo=timezone.utc)
+                    valid_time = analysis_date + timedelta(hours=fhr)
+                    
+                    success = self._record_dataset(
+                        analysis_date=analysis_date,
+                        cycle=cycle,
+                        forecast_date=valid_time,
+                        local_file_path=str(file_path),
+                        is_forecast=False
+                    )
+                    
+                    if success:
+                        collected += 1
+                
             self.db.complete_collection(collection_id, collected)
             logger.info(f"Historical collection completed: {collected} datasets")
             return collected
@@ -312,6 +333,7 @@ class NOAAWindCollector(BaseCollector):
                 
                 file_path = self.download_wind10m_subset(
                     yyyymmdd=yyyymmdd,
+                    datatype="gfs",
                     cycle=cycle,
                     fhr=fhr,
                     skip_if_exists=True,
@@ -320,15 +342,14 @@ class NOAAWindCollector(BaseCollector):
                 
                 if file_path:
                     # Record this dataset
-                    forecast_date = datetime.strptime(f"{yyyymmdd}{cycle}", "%Y%m%d%H")
-                    forecast_date = forecast_date.replace(tzinfo=timezone.utc)
-                    valid_time = forecast_date + timedelta(hours=fhr)
+                    forecast_date_run = datetime.strptime(f"{yyyymmdd}{cycle}", "%Y%m%d%H")
+                    forecast_date_run = forecast_date_run.replace(tzinfo=timezone.utc)
+                    valid_time = forecast_date_run + timedelta(hours=fhr)
                     
                     success = self._record_dataset(
-                        forecast_date=forecast_date,
-                        forecast_cycle=cycle,
-                        valid_time_start=valid_time,
-                        valid_time_end=valid_time,
+                        analysis_date=forecast_date_run,
+                        cycle=cycle,
+                        forecast_date=valid_time,
                         local_file_path=str(file_path),
                         is_forecast=(fhr > 0)
                     )

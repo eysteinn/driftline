@@ -87,7 +87,7 @@ class DataAggregatorService:
     def collect_all_forecasts(self):
         """Collect latest forecast data from all sources"""
         logger.info("=== Starting forecast data collection ===")
-        
+        return
         forecast_hours = config.FORECAST_HOURS
         
         try:
@@ -166,18 +166,18 @@ class DataAggregatorService:
         
         # Collect initial forecast data
         logger.info("Collecting initial forecast data...")
-        self.collect_all_forecasts()
+        #self.collect_all_forecasts()
         
         # Setup and start scheduler
-        self.setup_scheduled_jobs()
-        self.scheduler.start()
+        #self.setup_scheduled_jobs()
+        #self.scheduler.start()
         logger.info("Scheduler started")
         
         # Print scheduled jobs
-        jobs = self.scheduler.get_jobs()
-        logger.info(f"Active scheduled jobs: {len(jobs)}")
-        for job in jobs:
-            logger.info(f"  - {job.name} (next run: {job.next_run_time})")
+        #jobs = self.scheduler.get_jobs()
+        #logger.info(f"Active scheduled jobs: {len(jobs)}")
+        #for job in jobs:
+        #    logger.info(f"  - {job.name} (next run: {job.next_run_time})")
         
         self.running = True
         logger.info("Data Aggregator Service is running")
