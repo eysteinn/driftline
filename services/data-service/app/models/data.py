@@ -83,8 +83,8 @@ class DataResponse:
     cache_hit: bool
     metadata: Metadata
     expires_at: datetime
-    file_url: Optional[str] = None
-    file_path: Optional[str] = None
+    file_urls: Optional[List[str]] = None
+    file_paths: Optional[List[str]] = None
     
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization"""

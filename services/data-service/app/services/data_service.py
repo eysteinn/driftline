@@ -6,7 +6,7 @@ import hashlib
 import tempfile
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, List
 import xarray as xr
 from app.config import config
 from app.models import (
@@ -15,7 +15,7 @@ from app.models import (
 )
 from app.services.cache import CacheService
 from app.services.storage import StorageService
-from app.clients import CopernicusClient, NOAAGFSClient, NOAAWaveWatchClient
+from app.services.database import DatabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +27,7 @@ class DataService:
         self,
         cache_service: Optional[CacheService] = None,
         storage_service: Optional[StorageService] = None,
-        copernicus_client: Optional[CopernicusClient] = None,
-        gfs_client: Optional[NOAAGFSClient] = None,
-        wavewatch_client: Optional[NOAAWaveWatchClient] = None
+        database_service: Optional[DatabaseService] = None
     ):
         """
         Initialize data service
@@ -37,15 +35,11 @@ class DataService:
         Args:
             cache_service: Cache service instance
             storage_service: Storage service instance
-            copernicus_client: Copernicus client instance
-            gfs_client: NOAA GFS client instance
-            wavewatch_client: NOAA WaveWatch client instance
+            database_service: Database service instance
         """
         self.cache = cache_service or CacheService()
         self.storage = storage_service or StorageService()
-        self.copernicus = copernicus_client or CopernicusClient()
-        self.gfs = gfs_client or NOAAGFSClient()
-        self.wavewatch = wavewatch_client or NOAAWaveWatchClient()
+        self.database = database_service or DatabaseService()
     
     def get_data(self, request: DataRequest) -> DataResponse:
         """
@@ -68,71 +62,86 @@ class DataService:
         cache_key = self._generate_cache_key(request)
         
         # Check cache first
-        cached_path = self.cache.get(cache_key)
-        if cached_path and self.storage.exists(cached_path):
-            logger.info(f"Cache hit for key: {cache_key}")
-            return self._build_response(request, cached_path, cache_hit=True)
+        cached_paths = self.cache.get(cache_key)
+        if cached_paths:
+            # Ensure cached value is a list
+            if isinstance(cached_paths, str):
+                cached_paths = [cached_paths]
+            # Check if all cached paths exist
+            if all(self.storage.exists(path) for path in cached_paths):
+                logger.info(f"Cache hit for key: {cache_key}")
+                return self._build_response(request, cached_paths, cache_hit=True)
         
         logger.info(f"Cache miss for key: {cache_key}")
         
-        # Generate storage key
-        storage_key = self._generate_storage_key(request)
+        # Fetch data from aggregator's collected datasets
+        logger.info(f"Fetching data from aggregator for {request.data_type}")
+        file_paths = self._fetch_from_aggregator(request)
         
-        # Check if data exists in storage
-        if self.storage.exists(storage_key):
-            logger.info(f"Data exists in storage: {storage_key}")
-            # Update cache
-            self.cache.set(cache_key, storage_key, config.CACHE_TTL)
-            return self._build_response(request, storage_key, cache_hit=False)
-        
-        # Fetch from external source
-        logger.info(f"Fetching data from external source for {request.data_type}")
-        local_path = self._fetch_from_source(request)
-        
-        if not local_path:
+        if not file_paths:
             raise ExternalSourceError(
-                f"Failed to fetch {request.data_type} data from external source"
+                f"No data available for {request.data_type} in requested time range. "
+                f"Data must be collected by data-aggregator service first."
             )
         
-        try:
-            # Upload to storage
-            if self.storage.upload_file(local_path, storage_key):
-                logger.info(f"Uploaded data to storage: {storage_key}")
-                
-                # Update cache
-                self.cache.set(cache_key, storage_key, config.CACHE_TTL)
-                
-                return self._build_response(request, storage_key, cache_hit=False)
-            else:
-                logger.warning("Failed to upload to storage, using local file")
-                return self._build_response(request, local_path, cache_hit=False)
-                
-        finally:
-            # Clean up temporary file if it was created
-            try:
-                if local_path.startswith(tempfile.gettempdir()):
-                    Path(local_path).unlink(missing_ok=True)
-            except Exception as e:
-                logger.error(f"Error cleaning up temporary file: {e}")
+        # Return all file paths without merging
+        return self._build_response(request, file_paths, cache_hit=False)
     
-    def _fetch_from_source(self, request: DataRequest) -> Optional[str]:
+    def _fetch_from_aggregator(self, request: DataRequest) -> Optional[List[str]]:
         """
-        Fetch data from appropriate external source
+        Fetch data from aggregator's collected datasets
         
         Args:
             request: Data request parameters
             
         Returns:
-            Path to downloaded file or None if error
+            List of file paths for available datasets or None if data not available
         """
-        if request.data_type == DataType.OCEAN_CURRENTS:
-            return self.copernicus.fetch_ocean_currents(request)
-        elif request.data_type == DataType.WIND:
-            return self.gfs.fetch_wind(request)
-        elif request.data_type == DataType.WAVES:
-            return self.wavewatch.fetch_waves(request)
-        else:
-            logger.error(f"Unknown data type: {request.data_type}")
+        try:
+            # Map DataType enum to database data_type strings
+            data_type_map = {
+                DataType.OCEAN_CURRENTS: 'ocean_currents',
+                DataType.WIND: 'wind',
+                DataType.WAVES: 'waves'
+            }
+            
+            data_type_str = data_type_map.get(request.data_type)
+            if not data_type_str:
+                logger.error(f"Unknown data type: {request.data_type}")
+                return None
+            
+            # Query database for available datasets
+            datasets = self.database.find_datasets(
+                data_type=data_type_str,
+                start_time=request.start_time,
+                end_time=request.end_time
+            )
+            
+            if not datasets:
+                logger.info(f"No datasets found in aggregator for {data_type_str}")
+                return None
+            
+            logger.info(f"Found {len(datasets)} datasets in aggregator")
+            
+            # Check coverage
+            #coverage = self.database.check_coverage(
+            #    data_type=data_type_str,
+            #    start_time=request.start_time,
+            #    end_time=request.end_time
+            #)
+            #print("AAAAAAAAAA")
+            #if not coverage['has_coverage']:
+            #    logger.warning("Insufficient data coverage in aggregator")
+            #    return None
+            #print("BBBBBBBBBB")
+            #if coverage['gap_count'] > 0:
+            #    logger.warning(f"Data has {coverage['gap_count']} gaps")
+            #print("CCCCCCCCCC")
+            # Return list of file paths instead of merging
+            return [dataset['file_path'] for dataset in datasets]
+            
+        except Exception as e:
+            logger.error(f"Error fetching from aggregator: {e}")
             return None
     
     def _generate_cache_key(self, request: DataRequest) -> str:
@@ -191,7 +200,7 @@ class DataService:
     def _build_response(
         self,
         request: DataRequest,
-        file_path: str,
+        file_paths: List[str],
         cache_hit: bool
     ) -> DataResponse:
         """
@@ -199,26 +208,51 @@ class DataService:
         
         Args:
             request: Data request parameters
-            file_path: Path to data file (storage key or local path)
+            file_paths: List of paths to data files (storage keys or local paths)
             cache_hit: Whether this was a cache hit
             
         Returns:
             Data response object
         """
-        # Try to extract metadata from NetCDF file
-        metadata = self._extract_metadata(request, file_path)
+        # Try to extract metadata from first NetCDF file (if available)
+        metadata = None
+        for file_path in file_paths:
+            if self.storage.exists(file_path):
+                metadata = self._extract_metadata(request, file_path)
+                break
         
-        # Generate presigned URL if file is in storage
-        file_url = None
-        if self.storage.exists(file_path):
-            file_url = self.storage.get_presigned_url(file_path, expiration=3600)
+        if not metadata:
+            # Use default metadata if we couldn't extract from files
+            metadata = Metadata(
+                variables=self._get_default_variables(request.data_type),
+                time_steps=0,
+                resolution=request.resolution or self._get_default_resolution(request.data_type),
+                bounds=Bounds(
+                    min_lat=request.min_lat,
+                    max_lat=request.max_lat,
+                    min_lon=request.min_lon,
+                    max_lon=request.max_lon
+                ),
+                time_range=TimeRange(
+                    start=request.start_time,
+                    end=request.end_time
+                )
+            )
+        
+        # Generate presigned URLs for files in storage
+        file_urls = []
+        for file_path in file_paths:
+            if self.storage.exists(file_path):
+                url = self.storage.get_presigned_url(file_path, expiration=3600)
+                if url:
+                    file_urls.append(url)
         
         return DataResponse(
             data_type=request.data_type,
             source=self._get_data_source(request.data_type),
             cache_hit=cache_hit,
-            file_path=file_path,
-            file_url=file_url,
+            file_paths=file_paths,
+            file_urls=file_urls if file_urls else None,
             metadata=metadata,
             expires_at=datetime.now(timezone.utc) + timedelta(hours=24)
         )
