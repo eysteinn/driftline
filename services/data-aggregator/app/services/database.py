@@ -39,15 +39,14 @@ class DatabaseService:
                         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                         data_type VARCHAR(50) NOT NULL,
                         source VARCHAR(50) NOT NULL,
-                        analysis_date TIMESTAMP NOT NULL,
-                        cycle VARCHAR(10),
-                        forecast_date TIMESTAMP NOT NULL,
+                        run_time TIMESTAMP NOT NULL,
+                        valid_time TIMESTAMP NOT NULL,
                         file_path VARCHAR(500) NOT NULL,
                         file_size_bytes BIGINT,
                         is_forecast BOOLEAN DEFAULT FALSE,
                         created_at TIMESTAMP DEFAULT NOW(),
                         last_accessed_at TIMESTAMP,
-                        UNIQUE(data_type, source, analysis_date, cycle, forecast_date)
+                        UNIQUE(data_type, source, run_time, valid_time)
                     )
                 """)
                 
@@ -57,12 +56,12 @@ class DatabaseService:
                     ON aggregator_datasets(data_type)
                 """)
                 cur.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_datasets_analysis_date 
-                    ON aggregator_datasets(analysis_date DESC)
+                    CREATE INDEX IF NOT EXISTS idx_datasets_run_time 
+                    ON aggregator_datasets(run_time DESC)
                 """)
                 cur.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_datasets_forecast_date 
-                    ON aggregator_datasets(forecast_date DESC)
+                    CREATE INDEX IF NOT EXISTS idx_datasets_valid_time 
+                    ON aggregator_datasets(valid_time DESC)
                 """)
                 cur.execute("""
                     CREATE INDEX IF NOT EXISTS idx_datasets_created 
@@ -94,15 +93,23 @@ class DatabaseService:
         self,
         data_type: str,
         source: str,
-        analysis_date: datetime,
-        cycle: str,
-        forecast_date: datetime,
+        run_time: datetime,
+        valid_time: datetime,
         file_path: str,
         file_size_bytes: int,
         is_forecast: bool = False
     ) -> Optional[str]:
         """
         Record a new dataset
+        
+        Args:
+            data_type: Type of data (e.g., 'wind', 'currents')
+            source: Data source (e.g., 'noaa_gfs', 'copernicus')
+            run_time: When the data was created/generated (model run time)
+            valid_time: What time period the data represents (valid for)
+            file_path: Path to file in storage
+            file_size_bytes: Size of file in bytes
+            is_forecast: Whether this is forecast data
         
         Returns:
             Dataset ID if successful, None otherwise
@@ -111,20 +118,18 @@ class DatabaseService:
             with self.conn.cursor() as cur:
                 cur.execute("""
                     INSERT INTO aggregator_datasets 
-                    (data_type, source, analysis_date, cycle, 
-                     forecast_date, file_path, 
-                     file_size_bytes, is_forecast)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (data_type, source, analysis_date, cycle, forecast_date)
+                    (data_type, source, run_time, valid_time,
+                     file_path, file_size_bytes, is_forecast)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (data_type, source, run_time, valid_time)
                     DO UPDATE SET 
                         file_path = EXCLUDED.file_path,
                         file_size_bytes = EXCLUDED.file_size_bytes,
                         created_at = NOW()
                     RETURNING id
                 """, (
-                    data_type, source, analysis_date, cycle,
-                    forecast_date, file_path,
-                    file_size_bytes, is_forecast
+                    data_type, source, run_time, valid_time,
+                    file_path, file_size_bytes, is_forecast
                 ))
                 
                 result = cur.fetchone()
@@ -139,6 +144,41 @@ class DatabaseService:
             logger.error(f"Failed to record dataset: {e}")
             self.conn.rollback()
             return None
+    
+    def dataset_exists(
+        self,
+        data_type: str,
+        source: str,
+        run_time: datetime,
+        valid_time: datetime
+    ) -> bool:
+        """
+        Check if a dataset already exists in the database
+        
+        Args:
+            data_type: Type of data
+            source: Data source
+            run_time: Model run time
+            valid_time: Valid time
+            
+        Returns:
+            True if dataset exists, False otherwise
+        """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id FROM aggregator_datasets
+                    WHERE data_type = %s 
+                      AND source = %s 
+                      AND run_time = %s 
+                      AND valid_time = %s
+                """, (data_type, source, run_time, valid_time))
+                
+                return cur.fetchone() is not None
+                
+        except Exception as e:
+            logger.error(f"Failed to check dataset existence: {e}")
+            return False
     
     def get_available_datasets(
         self,

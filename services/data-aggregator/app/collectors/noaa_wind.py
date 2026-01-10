@@ -230,64 +230,72 @@ class NOAAWindCollector(BaseCollector):
     
     def collect_historical(self, days_back: int, **kwargs) -> int:
         """
-        Collect historical wind data
+        Collect historical wind data for a specific date
         
         Args:
-            days_back: Number of days to go back
+            days_back: Number of days back from today to collect (0 = today, 1 = yesterday, etc.)
             
         Returns:
             Number of datasets collected
         """
-        logger.info(f"Starting historical wind data collection for {days_back} days back")
+        logger.info(f"Collecting wind data for {days_back} days back")
         collection_id = self.db.start_collection(self.data_type)
         collected = 0
         
         try:
-            # Collect data from specified days back
+            # Calculate target date (specific date N days ago)
             target_date = datetime.now(timezone.utc) - timedelta(days=days_back)
+            target_date = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
             yyyymmdd = target_date.strftime("%Y%m%d")
             
+            logger.info(f"Collecting wind data for date: {yyyymmdd}")
             
-            # Download f000 (analysis time)
+            # Download f000 (analysis time) for all cycles that day
             fhr = 0
             datatype = "gdas"
+            
             for cycle in TRY_CYCLES_NEWEST_FIRST:
-                filename = self.get_filename(datatype, yyyymmdd, cycle, fhr)
-                target_date = target_date.replace(hour=int(cycle), minute=0, second=0, microsecond=0)
-
-                s3key = self.get_s3_key(target_date, filename)  # just to log the key format
-                if self.storage.file_exists(s3key):
-                    logger.info(f"Historical data already collected for {yyyymmdd} {cycle}Z f{fhr:03d}")
+                # Calculate run time (when the model ran)
+                run_time = target_date.replace(hour=int(cycle))
+                valid_time = run_time + timedelta(hours=fhr)  # For f000, valid_time = run_time
+                
+                # Check if already collected
+                if self.db.dataset_exists(self.data_type, self.source, run_time, valid_time):
+                    logger.info(f"Data already collected for {yyyymmdd} {cycle}Z")
+                    collected += 1  # Count as collected
                     continue
-                logger.info(f"Downloading historical data for {yyyymmdd} {cycle}Z f{fhr:03d}")
                 
-                file_path = self.download_wind10m_subset(
-                    yyyymmdd=yyyymmdd,
-                    datatype=datatype,
-                    cycle=cycle,
-                    fhr=fhr,
-                    skip_if_exists=True
-                )
+                logger.info(f"Downloading wind data for {yyyymmdd} {cycle}Z")
                 
-                if file_path:
-                    # Record this dataset
-                    analysis_date = datetime.strptime(f"{yyyymmdd}{cycle}", "%Y%m%d%H")
-                    analysis_date = analysis_date.replace(tzinfo=timezone.utc)
-                    valid_time = analysis_date + timedelta(hours=fhr)
-                    
-                    success = self._record_dataset(
-                        analysis_date=analysis_date,
+                try:
+                    file_path = self.download_wind10m_subset(
+                        yyyymmdd=yyyymmdd,
+                        datatype=datatype,
                         cycle=cycle,
-                        forecast_date=valid_time,
-                        local_file_path=str(file_path),
-                        is_forecast=False
+                        fhr=fhr,
+                        skip_if_exists=True
                     )
                     
-                    if success:
-                        collected += 1
-                
+                    if file_path:
+                        success = self._record_dataset(
+                            run_time=run_time,
+                            valid_time=valid_time,
+                            local_file_path=str(file_path),
+                            is_forecast=False
+                        )
+                        
+                        if success:
+                            collected += 1
+                    else:
+                        logger.warning(f"Failed to download for {yyyymmdd} {cycle}Z")
+                        
+                except Exception as e:
+                    logger.error(f"Error collecting {yyyymmdd} {cycle}Z: {e}")
+                    # Continue with next cycle instead of failing entire collection
+                    continue
+            
             self.db.complete_collection(collection_id, collected)
-            logger.info(f"Historical collection completed: {collected} datasets")
+            logger.info(f"Historical collection completed: {collected}/4 cycles collected")
             return collected
             
         except Exception as e:
@@ -341,15 +349,20 @@ class NOAAWindCollector(BaseCollector):
                 )
                 
                 if file_path:
-                    # Record this dataset
-                    forecast_date_run = datetime.strptime(f"{yyyymmdd}{cycle}", "%Y%m%d%H")
-                    forecast_date_run = forecast_date_run.replace(tzinfo=timezone.utc)
-                    valid_time = forecast_date_run + timedelta(hours=fhr)
+                    # Calculate times
+                    run_time = datetime.strptime(f"{yyyymmdd}{cycle}", "%Y%m%d%H")
+                    run_time = run_time.replace(tzinfo=timezone.utc)
+                    valid_time = run_time + timedelta(hours=fhr)
+                    
+                    # Check if already collected
+                    if self.db.dataset_exists(self.data_type, self.source, run_time, valid_time):
+                        logger.info(f"Forecast f{fhr:03d} already collected")
+                        collected += 1
+                        continue
                     
                     success = self._record_dataset(
-                        analysis_date=forecast_date_run,
-                        cycle=cycle,
-                        forecast_date=valid_time,
+                        run_time=run_time,
+                        valid_time=valid_time,
                         local_file_path=str(file_path),
                         is_forecast=(fhr > 0)
                     )

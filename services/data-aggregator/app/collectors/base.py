@@ -89,9 +89,8 @@ class BaseCollector(ABC):
 
     def _record_dataset(
         self,
-        analysis_date: datetime,
-        cycle: str,
-        forecast_date: datetime,
+        run_time: datetime,
+        valid_time: datetime,
         local_file_path: str,
         is_forecast: bool = False
     ) -> bool:
@@ -99,9 +98,8 @@ class BaseCollector(ABC):
         Record a dataset in database and upload to storage
         
         Args:
-            analysis_date: Date of the analysis run
-            cycle: Forecast cycle (e.g., '00', '06', '12', '18')
-            valid_date: Valid date of the data
+            run_time: When the data was created (model run time)
+            valid_time: What time the data is valid for
             local_file_path: Path to local file
             is_forecast: Whether this is forecast data
             
@@ -109,12 +107,15 @@ class BaseCollector(ABC):
             True if successful, False otherwise
         """
         try:
+            # Check if dataset already exists in database
+            if self.db.dataset_exists(self.data_type, self.source, run_time, valid_time):
+                logger.info(f"Dataset already recorded: {self.data_type} run={run_time} valid={valid_time}")
+                return True  # Already exists, consider it success
+            
             # Generate S3 key
             filename = local_file_path.split('/')[-1]
-            
-            #s3_key = f"{self.data_type}/{date_path}/{forecast_cycle}/{filename}"
             s3_key = self.get_s3_key(
-                date=analysis_date,
+                date=valid_time,  # Use valid_time for file organization
                 filename=filename
             )
             
@@ -136,9 +137,8 @@ class BaseCollector(ABC):
             dataset_id = self.db.record_dataset(
                 data_type=self.data_type,
                 source=self.source,
-                analysis_date=analysis_date,
-                cycle=cycle,
-                forecast_date=forecast_date,
+                run_time=run_time,
+                valid_time=valid_time,
                 file_path=s3_key,
                 file_size_bytes=file_size or 0,
                 is_forecast=is_forecast
