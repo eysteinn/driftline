@@ -1,9 +1,12 @@
 """
 Base collector interface
 """
+import hashlib
 import logging
+import os
 from abc import ABC, abstractmethod
 from datetime import datetime
+from pathlib import Path
 from typing import Optional, List
 from app.services import DatabaseService, StorageService
 
@@ -87,6 +90,49 @@ class BaseCollector(ABC):
         return s3_key
 
 
+    def _validate_file(self, file_path: str) -> bool:
+        """Validate that file exists and has content"""
+        try:
+            path = Path(file_path)
+            if not path.exists():
+                logger.error(f"File does not exist: {file_path}")
+                return False
+            
+            size = path.stat().st_size
+            if size == 0:
+                logger.error(f"File is empty: {file_path}")
+                return False
+            
+            logger.debug(f"File validation passed: {file_path} ({size} bytes)")
+            return True
+        except Exception as e:
+            logger.error(f"Error validating file {file_path}: {e}")
+            return False
+    
+    def _calculate_checksum(self, file_path: str) -> Optional[str]:
+        """Calculate MD5 checksum of file"""
+        try:
+            md5_hash = hashlib.md5()
+            with open(file_path, "rb") as f:
+                for chunk in iter(lambda: f.read(8192), b""):
+                    md5_hash.update(chunk)
+            checksum = md5_hash.hexdigest()
+            logger.debug(f"Calculated checksum for {file_path}: {checksum}")
+            return checksum
+        except Exception as e:
+            logger.error(f"Error calculating checksum for {file_path}: {e}")
+            return None
+    
+    def _cleanup_file(self, file_path: str):
+        """Delete temporary file after processing"""
+        try:
+            path = Path(file_path)
+            if path.exists():
+                path.unlink()
+                logger.debug(f"Cleaned up temporary file: {file_path}")
+        except Exception as e:
+            logger.warning(f"Failed to cleanup file {file_path}: {e}")
+
     def _record_dataset(
         self,
         run_time: datetime,
@@ -110,7 +156,20 @@ class BaseCollector(ABC):
             # Check if dataset already exists in database
             if self.db.dataset_exists(self.data_type, self.source, run_time, valid_time):
                 logger.info(f"Dataset already recorded: {self.data_type} run={run_time} valid={valid_time}")
+                self._cleanup_file(local_file_path)  # Clean up since we don't need it
                 return True  # Already exists, consider it success
+            
+            # Validate file before processing
+            if not self._validate_file(local_file_path):
+                logger.error(f"File validation failed: {local_file_path}")
+                self._cleanup_file(local_file_path)
+                return False
+            
+            # Calculate checksum for integrity tracking
+            checksum = self._calculate_checksum(local_file_path)
+            
+            # Get file size
+            file_size = Path(local_file_path).stat().st_size
             
             # Generate S3 key
             filename = local_file_path.split('/')[-1]
@@ -122,30 +181,32 @@ class BaseCollector(ABC):
             # Check if file already exists in storage
             if self.storage.file_exists(s3_key):
                 logger.info(f"File already exists in storage: {s3_key}")
-                # Get file size from S3
-                file_size = self.storage.get_file_size(s3_key)
             else:
                 # Upload to storage
                 if not self.storage.upload_file(local_file_path, s3_key):
                     logger.error(f"Failed to upload file to storage: {s3_key}")
+                    self._cleanup_file(local_file_path)
                     return False
                 
-                # Get file size
-                file_size = self.storage.get_file_size(s3_key)
+                logger.info(f"Uploaded file to storage: {s3_key} ({file_size} bytes)")
             
-            # Record in database
+            # Record in database with checksum
             dataset_id = self.db.record_dataset(
                 data_type=self.data_type,
                 source=self.source,
                 run_time=run_time,
                 valid_time=valid_time,
                 file_path=s3_key,
-                file_size_bytes=file_size or 0,
-                is_forecast=is_forecast
+                file_size_bytes=file_size,
+                is_forecast=is_forecast,
+                checksum=checksum
             )
             
+            # Clean up temporary file after successful processing
+            self._cleanup_file(local_file_path)
+            
             if dataset_id:
-                logger.info(f"Recorded dataset {dataset_id} for {self.data_type}")
+                logger.info(f"Recorded dataset {dataset_id} for {self.data_type} (checksum: {checksum[:8]}...)")
                 return True
             else:
                 logger.error("Failed to record dataset in database")
@@ -153,4 +214,5 @@ class BaseCollector(ABC):
                 
         except Exception as e:
             logger.error(f"Error recording dataset: {e}")
+            self._cleanup_file(local_file_path)  # Clean up on error
             return False

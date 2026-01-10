@@ -143,6 +143,7 @@ class CopernicusOceanCollector(BaseCollector):
             # Iterate through each hour of that day
             for hour_offset in range(total_hours):
                 current_time = target_date + timedelta(hours=hour_offset)
+                progress = f"[{hour_offset+1}/{total_hours}]"
                 
                 # For historical data, run_time = valid_time (no forecast offset)
                 run_time = current_time
@@ -150,11 +151,11 @@ class CopernicusOceanCollector(BaseCollector):
                 
                 # Check if already collected
                 if self.db.dataset_exists(self.data_type, self.source, run_time, valid_time):
-                    logger.debug(f"Hour {hour_offset} already collected")
+                    logger.debug(f"{progress} Hour {hour_offset} already collected")
                     collected += 1
                     continue
                 
-                logger.info(f"Downloading ocean currents for {current_time}")
+                logger.info(f"{progress} Downloading ocean currents for {current_time}")
                 
                 try:
                     file_path = self.download_ocean_currents(date=current_time)
@@ -169,9 +170,9 @@ class CopernicusOceanCollector(BaseCollector):
                         
                         if success:
                             collected += 1
-                            logger.info(f"Collected hour {hour_offset+1}/{total_hours}")
+                            logger.info(f"{progress} ✓ Successfully collected hour {hour_offset+1}/{total_hours}")
                     else:
-                        logger.warning(f"Failed to download for {current_time}")
+                        logger.warning(f"{progress} Failed to download for {current_time}")
                         
                 except Exception as e:
                     logger.error(f"Error collecting hour {hour_offset}: {e}")

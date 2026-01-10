@@ -286,8 +286,9 @@ class NOAAWindCollector(BaseCollector):
                         
                         if success:
                             collected += 1
+                            logger.info(f"[{idx}/{total_cycles}] ✓ Successfully collected {yyyymmdd} {cycle}Z")
                     else:
-                        logger.warning(f"Failed to download for {yyyymmdd} {cycle}Z")
+                        logger.warning(f"[{idx}/{total_cycles}] Failed to download for {yyyymmdd} {cycle}Z")
                         
                 except Exception as e:
                     logger.error(f"Error collecting {yyyymmdd} {cycle}Z: {e}")

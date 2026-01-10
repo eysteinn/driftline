@@ -43,6 +43,7 @@ class DatabaseService:
                         valid_time TIMESTAMP NOT NULL,
                         file_path VARCHAR(500) NOT NULL,
                         file_size_bytes BIGINT,
+                        checksum VARCHAR(64),
                         is_forecast BOOLEAN DEFAULT FALSE,
                         created_at TIMESTAMP DEFAULT NOW(),
                         last_accessed_at TIMESTAMP,
@@ -97,7 +98,8 @@ class DatabaseService:
         valid_time: datetime,
         file_path: str,
         file_size_bytes: int,
-        is_forecast: bool = False
+        is_forecast: bool = False,
+        checksum: Optional[str] = None
     ) -> Optional[str]:
         """
         Record a new dataset
@@ -110,6 +112,7 @@ class DatabaseService:
             file_path: Path to file in storage
             file_size_bytes: Size of file in bytes
             is_forecast: Whether this is forecast data
+            checksum: MD5 checksum of file for integrity verification
         
         Returns:
             Dataset ID if successful, None otherwise
@@ -119,17 +122,18 @@ class DatabaseService:
                 cur.execute("""
                     INSERT INTO aggregator_datasets 
                     (data_type, source, run_time, valid_time,
-                     file_path, file_size_bytes, is_forecast)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                     file_path, file_size_bytes, checksum, is_forecast)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (data_type, source, run_time, valid_time)
                     DO UPDATE SET 
                         file_path = EXCLUDED.file_path,
                         file_size_bytes = EXCLUDED.file_size_bytes,
+                        checksum = EXCLUDED.checksum,
                         created_at = NOW()
                     RETURNING id
                 """, (
                     data_type, source, run_time, valid_time,
-                    file_path, file_size_bytes, is_forecast
+                    file_path, file_size_bytes, checksum, is_forecast
                 ))
                 
                 result = cur.fetchone()
